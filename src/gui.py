@@ -103,19 +103,19 @@ def _panel_header(panel, title: str) -> ctk.CTkFrame:
 # Main application window
 # ---------------------------------------------------------------------------
 
-class LongevityApp(ctk.CTk):
+class LongevityApp(ctk.CTk, TkinterDnD.DnDWrapper if _TKDND_AVAILABLE else object):
     def __init__(self):
         super().__init__()
 
-        # Fix 1 — initialize tkdnd on the root window (must happen before build)
+        # DnD: DnDWrapper mixin + explicit _require on this root window
         self._dnd_ok = False
         if _TKDND_AVAILABLE:
             try:
-                TkinterDnD._require(self)
+                self.TkdndVersion = TkinterDnD._require(self)
                 self._dnd_ok = True
-                print("[DnD] tkinterdnd2 initialised successfully.")
+                print("[DnD] tkinterdnd2 ready.")
             except Exception as exc:
-                print(f"[DnD] Init failed, drag-and-drop disabled: {exc}")
+                print(f"[DnD] Init failed, Browse button will be used: {exc}")
 
         self.title("Longevity Risk Calculator")
         self.geometry("1260x860")
@@ -128,7 +128,8 @@ class LongevityApp(ctk.CTk):
         self._ah_vars:    Dict[str, ctk.StringVar] = {}   # backing vars for manual entries
         self._ah_entries: Dict[str, ctk.CTkEntry]  = {}   # editable entries (None mode)
         self._ah_raw:     Dict[str, str]            = {}   # numeric string per field for pre-fill
-        self._drop_label = None   # tk.Label or None (DnD zone inner label)
+        self._drop_label = None      # tk.Label inside the DnD zone
+        self._lab_extras: Dict[str, Optional[float]] = {}  # crp/hba1c/glucose from parser
 
         # Fix 3 — window selector state (default "Last value", not "None")
         self._window_var = tk.StringVar(value="Last value")
@@ -321,6 +322,7 @@ class LongevityApp(ctk.CTk):
         ("total_cholesterol", "Total Cholesterol", "mg/dL"),
         ("hdl",               "HDL",               "mg/dL"),
         ("ldl",               "LDL",               "mg/dL"),
+        ("triglycerides",     "Triglycerides",     "mg/dL"),
         ("apob",              "ApoB",              "mg/dL"),
     ]
 
@@ -330,50 +332,50 @@ class LongevityApp(ctk.CTk):
 
         _panel_header(f, "Lab Results")
 
-        # Fix 1 — DnD drop zone using plain tk widgets (CTk widgets don't get
-        # drop_target_register after TkinterDnD._require patches tk.BaseWidget)
+        # ── Drop zone (plain tk widgets so DnD events fire) ────────────
+        drop_outer = tk.Frame(f, bg=_SURFACE3, relief="solid", bd=1, height=60)
+        drop_outer.grid(row=2, column=0, columnspan=2, sticky="ew",
+                        padx=14, pady=(14, 4))
+        drop_outer.grid_propagate(False)
+        self._drop_label = tk.Label(
+            drop_outer,
+            text="Drop blood panel PDF here",
+            bg=_SURFACE3, fg=_INK4, font=("Segoe UI", 11),
+        )
+        self._drop_label.pack(expand=True)
         if self._dnd_ok:
-            drop_outer = tk.Frame(f, bg=_SURFACE3, relief="solid", bd=1, height=72)
-            drop_outer.grid(row=2, column=0, columnspan=2, sticky="ew",
-                            padx=14, pady=(14, 10))
-            drop_outer.grid_propagate(False)
-
-            self._drop_label = tk.Label(
-                drop_outer,
-                text="Drop blood panel PDF here",
-                bg=_SURFACE3, fg=_INK4,
-                font=("Segoe UI", 12),
-            )
-            self._drop_label.pack(expand=True)
             self._drop_label.drop_target_register(DND_FILES)
             self._drop_label.dnd_bind("<<Drop>>", self._on_lab_drop)
-        else:
-            # Fallback: static label + Browse button
-            drop = ctk.CTkFrame(
-                f, fg_color=_SURFACE3, corner_radius=8,
-                border_width=1, border_color=_LINE, height=72,
-            )
-            drop.grid(row=2, column=0, columnspan=2, sticky="ew",
-                      padx=14, pady=(14, 10))
-            drop.grid_columnconfigure(0, weight=1)
-            drop.grid_rowconfigure(0, weight=1)
-            ctk.CTkLabel(
-                drop, text="Drop PDF (DnD unavailable)",
-                font=_font(12), text_color=_INK4,
-            ).grid(row=0, column=0, padx=12, pady=12)
 
+        # ── Browse button (always visible reliable fallback) ───────────
+        ctk.CTkButton(
+            f, text="Browse for PDF...",
+            height=28, corner_radius=6, font=_font(11),
+            fg_color=_SURFACE3, hover_color=_LINE,
+            text_color=_INK2, border_color=_BORDER, border_width=1,
+            command=self._browse_lab_file,
+        ).grid(row=3, column=0, columnspan=2, sticky="ew", padx=14, pady=(0, 2))
+
+        # ── Status line ────────────────────────────────────────────────
+        self._lab_status = ctk.CTkLabel(
+            f, text="", font=_font(10), text_color=_INK3, anchor="w",
+            wraplength=260,
+        )
+        self._lab_status.grid(row=4, column=0, columnspan=2,
+                               sticky="w", padx=14, pady=(0, 6))
+
+        # ── Lab value entry fields (rows 5+) ───────────────────────────
         self._lab_vars: Dict[str, ctk.StringVar] = {}
         for i, (key, label, unit) in enumerate(self._LAB_FIELDS):
-            r = i + 3
+            r = i + 5
             ctk.CTkLabel(f, text=label, font=_font(12), text_color=_INK2,
                          anchor="w").grid(
-                row=r, column=0, sticky="w", padx=14, pady=5)
+                row=r, column=0, sticky="w", padx=14, pady=4)
             var = ctk.StringVar()
             self._lab_vars[key] = var
-            # Fix 2 — styled entry
             self._entry(f, var, placeholder_text=unit,
                         width=96, height=30).grid(
-                row=r, column=1, sticky="e", padx=14, pady=5)
+                row=r, column=1, sticky="e", padx=14, pady=4)
 
         return f
 
@@ -524,51 +526,97 @@ class LongevityApp(ctk.CTk):
     # ----------------------------------------------------------- Lab parsing --
 
     def _on_lab_drop(self, event):
-        path = event.data.strip()
-        # tkinterdnd2 wraps paths with spaces in braces on Windows
-        if path.startswith("{") and path.endswith("}"):
-            path = path[1:-1]
+        # Strip whitespace and curly braces (Windows wraps spaced paths in {})
+        path = event.data.strip().strip("{}")
         print(f"[DnD] Dropped: {path}")
-        fname = Path(path).name
-        if self._drop_label is not None:
-            self._drop_label.config(text=f"Parsing {fname}...")
         self._parse_lab_async(path)
 
+    def _browse_lab_file(self):
+        from tkinter import filedialog
+        path = filedialog.askopenfilename(
+            title="Select lab report",
+            filetypes=[
+                ("PDF files", "*.pdf"),
+                ("Images", "*.jpg *.jpeg *.png *.webp"),
+                ("All files", "*.*"),
+            ],
+        )
+        if path:
+            self._parse_lab_async(path)
+
     def _parse_lab_async(self, file_path: str):
+        fname = Path(file_path).name
+        self._drop_label.config(text=f"Reading {fname}...")
+        self._lab_status.configure(text="Reading PDF...", text_color=_INK3)
+
         def _worker():
             try:
-                from src.lab_parser import extract_lab_values
-                data = extract_lab_values(file_path)
+                from src.lab_parser import parse_lab_pdf
+                data = parse_lab_pdf(file_path)
                 self.after(0, lambda: self._on_lab_parsed(file_path, data))
             except Exception as exc:
                 self.after(0, lambda: self._on_lab_error(file_path, exc))
+
         threading.Thread(target=_worker, daemon=True).start()
 
     def _on_lab_parsed(self, file_path: str, data: Dict):
-        fname = Path(file_path).name
-        if self._drop_label is not None:
-            self._drop_label.config(text=f"Parsed: {fname}")
+        fname  = Path(file_path).name
+        vendor = data.get("lab_vendor", "unknown").replace("_", " ").title()
+        date   = data.get("lab_date", "")
+
+        # Only populate fields the user hasn't already typed into
         field_map = {
             "total_cholesterol": "total_cholesterol",
             "hdl":               "hdl",
             "ldl":               "ldl",
+            "triglycerides":     "triglycerides",
             "apob":              "apob",
         }
-        populated = 0
-        for api_key, var_key in field_map.items():
-            val = data.get(api_key)
-            if val is not None:
+        populated, missing = 0, []
+        for parser_key, var_key in field_map.items():
+            val = data.get(parser_key)
+            if val is None:
+                missing.append(parser_key)
+            elif not self._lab_vars[var_key].get().strip():
                 self._lab_vars[var_key].set(str(round(val, 1)))
                 populated += 1
-        print(f"[Lab] Populated {populated}/4 fields: {data}")
+
+        # Store extras (crp, hba1c, glucose) for model use
+        self._lab_extras = {
+            k: data.get(k)
+            for k in ("crp", "hba1c", "glucose")
+        }
+
+        # Update drop label
+        self._drop_label.config(text=fname)
+
+        # Build status line
+        numeric_keys = [
+            "total_cholesterol", "hdl", "ldl", "triglycerides", "apob",
+            "hba1c", "glucose", "crp", "vldl", "non_hdl",
+        ]
+        n_extracted = sum(1 for k in numeric_keys if data.get(k) is not None)
+        date_part = f" — {date}" if date else ""
+        status = f"{vendor}{date_part} — {n_extracted} values extracted"
+        if missing:
+            _labels = {
+                "total_cholesterol": "TC", "hdl": "HDL", "ldl": "LDL",
+                "triglycerides": "Trig", "apob": "ApoB",
+            }
+            status += f" ({', '.join(_labels.get(m, m) for m in missing)} not on panel)"
+        self._lab_status.configure(
+            text=status,
+            text_color=_OK if populated > 0 else _WARN,
+        )
+        print(f"[Lab] {status} | populated={populated}")
 
     def _on_lab_error(self, file_path: str, exc: Exception):
-        fname = Path(file_path).name
-        msg = str(exc)
-        print(f"[Lab] Error parsing {fname}: {msg}")
-        if self._drop_label is not None:
-            short = msg[:55] + "…" if len(msg) > 55 else msg
-            self._drop_label.config(text=f"Error: {short}")
+        print(f"[Lab] Error: {exc}")
+        self._drop_label.config(text=Path(file_path).name)
+        self._lab_status.configure(
+            text="Could not read PDF — please enter values manually",
+            text_color=_WARN,
+        )
 
     # ---------------------------------------------------------- Calculate --
 
@@ -626,6 +674,9 @@ class LongevityApp(ctk.CTk):
         grip_kg      = self._parse_float(self._fitness_vars["grip_kg"].get())
         hang_seconds = self._parse_float(self._fitness_vars["hang_seconds"].get())
 
+        crp_raw   = self._lab_extras.get("crp")
+        crp_model = 0.5 if crp_raw is not None and crp_raw <= 1.0 else crp_raw
+
         features = {
             "age":               age,
             "sex":               sex,
@@ -640,6 +691,7 @@ class LongevityApp(ctk.CTk):
             "grip_kg":           grip_kg,
             "hang_seconds":      hang_seconds,
             "weight_kg":         wt_kg,
+            "crp":               crp_model,
         }
 
         rh    = predict_combined_hazard(features)
