@@ -560,37 +560,53 @@ class LongevityApp(ctk.CTk, TkinterDnD.DnDWrapper if _TKDND_AVAILABLE else objec
         threading.Thread(target=_worker, daemon=True).start()
 
     def _on_lab_parsed(self, file_path: str, data: Dict):
+        try:
+            self._do_populate_lab(file_path, data)
+        except Exception as exc:
+            print(f"[Lab] Unexpected error in _on_lab_parsed: {exc}")
+            self._drop_label.config(text=Path(file_path).name)
+            self._lab_status.configure(
+                text=f"Parse error — please enter values manually ({exc})",
+                text_color=_WARN,
+            )
+
+    def _do_populate_lab(self, file_path: str, data: Dict):
         fname  = Path(file_path).name
         vendor = data.get("lab_vendor", "unknown").replace("_", " ").title()
         date   = data.get("lab_date", "")
 
-        # Only populate fields the user hasn't already typed into
+        # Map parser keys → UI var keys.  ApoB is optional — absence must
+        # never prevent the other fields from populating.
         field_map = {
             "total_cholesterol": "total_cholesterol",
             "hdl":               "hdl",
             "ldl":               "ldl",
             "triglycerides":     "triglycerides",
-            "apob":              "apob",
+            "apob":              "apob",   # optional — may not be on every panel
         }
         populated, missing = 0, []
         for parser_key, var_key in field_map.items():
-            val = data.get(parser_key)
-            if val is None:
+            try:
+                val = data.get(parser_key)
+                if val is None:
+                    missing.append(parser_key)
+                    continue
+                # Only fill if the user hasn't already typed something
+                if not self._lab_vars[var_key].get().strip():
+                    self._lab_vars[var_key].set(str(round(float(val), 1)))
+                    populated += 1
+            except Exception as field_exc:
+                print(f"[Lab] Could not populate {parser_key}: {field_exc}")
                 missing.append(parser_key)
-            elif not self._lab_vars[var_key].get().strip():
-                self._lab_vars[var_key].set(str(round(val, 1)))
-                populated += 1
 
-        # Store extras (crp, hba1c, glucose) for model use
+        # Store extras (crp, hba1c, glucose) for model — never raise here
         self._lab_extras = {
-            k: data.get(k)
-            for k in ("crp", "hba1c", "glucose")
+            k: data.get(k) for k in ("crp", "hba1c", "glucose")
         }
 
-        # Update drop label
         self._drop_label.config(text=fname)
 
-        # Build status line
+        # Status line
         numeric_keys = [
             "total_cholesterol", "hdl", "ldl", "triglycerides", "apob",
             "hba1c", "glucose", "crp", "vldl", "non_hdl",
@@ -598,12 +614,12 @@ class LongevityApp(ctk.CTk, TkinterDnD.DnDWrapper if _TKDND_AVAILABLE else objec
         n_extracted = sum(1 for k in numeric_keys if data.get(k) is not None)
         date_part = f" — {date}" if date else ""
         status = f"{vendor}{date_part} — {n_extracted} values extracted"
+        _short = {
+            "total_cholesterol": "TC", "hdl": "HDL", "ldl": "LDL",
+            "triglycerides": "Trig", "apob": "ApoB",
+        }
         if missing:
-            _labels = {
-                "total_cholesterol": "TC", "hdl": "HDL", "ldl": "LDL",
-                "triglycerides": "Trig", "apob": "ApoB",
-            }
-            status += f" ({', '.join(_labels.get(m, m) for m in missing)} not on panel)"
+            status += f" ({', '.join(_short.get(m, m) for m in missing)} not on panel)"
         self._lab_status.configure(
             text=status,
             text_color=_OK if populated > 0 else _WARN,
