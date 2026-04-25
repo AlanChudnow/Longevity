@@ -193,13 +193,26 @@ class LongevityApp(ctk.CTk, TkinterDnD.DnDWrapper if _TKDND_AVAILABLE else objec
         self._p3 = self._build_panel_manual(inp)
         self._p3.grid(row=0, column=2, sticky="nsew", padx=(6, 0))
 
+        _btn_wrap = ctk.CTkFrame(self, fg_color="transparent")
+        _btn_wrap.grid(row=1, column=0, sticky="ew", padx=20)
+        _btn_wrap.grid_columnconfigure(0, weight=1)
+
         ctk.CTkButton(
-            self, text="CALCULATE",
+            _btn_wrap, text="CALCULATE",
             height=48, corner_radius=8,
             font=_font(14, "bold"),
             fg_color=_ACCENT, hover_color=_ACCENT_HVR, text_color="#ffffff",
             command=self._on_calculate,
-        ).grid(row=1, column=0, sticky="ew", padx=20, pady=12)
+        ).grid(row=0, column=0, sticky="ew", pady=(12, 4))
+
+        self._missing_warn = ctk.CTkLabel(
+            _btn_wrap,
+            text="",
+            font=_font(10), text_color=_WARN, anchor="center",
+            wraplength=700,
+        )
+        self._missing_warn.grid(row=1, column=0, pady=(0, 6))
+        self._missing_warn.grid_remove()
 
         self._results_frame = _panel(self)
         self._results_frame.grid(row=2, column=0, sticky="nsew",
@@ -388,6 +401,25 @@ class LongevityApp(ctk.CTk, TkinterDnD.DnDWrapper if _TKDND_AVAILABLE else objec
             ent.grid_remove()
             self._ah_entries[key] = ent
 
+        # BMI auto-compute: fires whenever weight or height var changes (None mode)
+        def _bmi_trace(*_args):
+            try:
+                w = float(self._ah_vars["weight_lb"].get())
+                h = float(self._ah_vars["height_in"].get())
+                if h <= 0:
+                    raise ValueError
+                bmi = round((w / h ** 2) * 703.0, 1)
+                self._ah_vars["bmi"].set(str(bmi))
+                self._ah_labels["bmi"].configure(text=str(bmi), text_color=_INK1)
+                self._ah_dots["bmi"].configure(text_color=_OK)
+            except ValueError:
+                self._ah_vars["bmi"].set("")
+                self._ah_labels["bmi"].configure(text="—", text_color=_INK4)
+                self._ah_dots["bmi"].configure(text_color=_WARN)
+
+        self._ah_vars["weight_lb"].trace_add("write", _bmi_trace)
+        self._ah_vars["height_in"].trace_add("write", _bmi_trace)
+
         self._ah_timestamp = ctk.CTkLabel(
             f, text="", font=_font(10), text_color=_INK4, anchor="w",
         )
@@ -530,8 +562,11 @@ class LongevityApp(ctk.CTk, TkinterDnD.DnDWrapper if _TKDND_AVAILABLE else objec
     def _on_window_change(self):
         """Called when the window selector changes (or on first load)."""
         if self._window_var.get() == "None":
-            # Pre-fill entries with last-known AH values, then make editable
+            # Pre-fill entries with last-known AH values, then make editable.
+            # BMI is always computed from weight/height; never editable directly.
             for key, var in self._ah_vars.items():
+                if key == "bmi":
+                    continue   # _bmi_trace updates BMI label as weight/height are set
                 var.set(self._ah_raw.get(key, ""))
                 self._ah_labels[key].grid_remove()
                 self._ah_entries[key].grid()
@@ -804,6 +839,16 @@ class LongevityApp(ctk.CTk, TkinterDnD.DnDWrapper if _TKDND_AVAILABLE else objec
             summarize_survival,
         )
 
+        # Range-validate an optional float: out-of-range treated as blank
+        def _parse_range(v: Optional[float], lo=None, hi=None) -> Optional[float]:
+            if v is None:
+                return None
+            if lo is not None and v < lo:
+                return None
+            if hi is not None and v > hi:
+                return None
+            return v
+
         if self._window_var.get() == "None":
             # Read typed values from the manual-entry fields
             def _s(key: str) -> str:
@@ -814,8 +859,8 @@ class LongevityApp(ctk.CTk, TkinterDnD.DnDWrapper if _TKDND_AVAILABLE else objec
             age   = int(float(age_s)) if age_s else None
             sex_s = _s("sex").lower()
             sex   = sex_s if sex_s in ("male", "female") else "male"
-            sbp   = _f("systolic_bp")
-            vo2   = _f("vo2_max")
+            sbp   = _parse_range(_f("systolic_bp"), lo=70,  hi=260)
+            vo2   = _parse_range(_f("vo2_max"),      lo=10,  hi=90)
             wlb   = _f("weight_lb")
             wt_kg = wlb * 0.453592 if wlb is not None else None
         else:
@@ -842,6 +887,21 @@ class LongevityApp(ctk.CTk, TkinterDnD.DnDWrapper if _TKDND_AVAILABLE else objec
 
         grip_kg      = self._parse_float(self._fitness_vars["grip_kg"].get())
         hang_seconds = self._parse_float(self._fitness_vars["hang_seconds"].get())
+
+        # Warning for missing high-impact optional inputs
+        missing_high = []
+        if vo2 is None:
+            missing_high.append("VO2 Max")
+        if grip_kg is None and hang_seconds is None:
+            missing_high.append("Grip Strength")
+        if missing_high:
+            self._missing_warn.configure(
+                text=f"⚠  {' and '.join(missing_high)} not entered"
+                     f" — fitness layers using neutral estimate"
+            )
+            self._missing_warn.grid()
+        else:
+            self._missing_warn.grid_remove()
 
         crp_raw   = self._lab_extras.get("crp")
         crp_model = 0.5 if crp_raw is not None and crp_raw <= 1.0 else crp_raw
