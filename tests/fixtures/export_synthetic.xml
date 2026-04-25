@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<HealthData locale="en_US">
+
+  <ExportDate value="2024-06-15 08:00:00 -0500"/>
+
+  <Me
+    HKCharacteristicTypeIdentifierDateOfBirth="1970-06-15"
+    HKCharacteristicTypeIdentifierBiologicalSex="HKBiologicalSexMale"
+    HKCharacteristicTypeIdentifierBloodType="HKBloodTypeNotSet"
+    HKCharacteristicTypeIdentifierFitzpatrickSkinType="HKFitzpatrickSkinTypeNotSet"
+  />
+
+  <!-- Body mass: older entry (should be ignored) -->
+  <Record
+    type="HKQuantityTypeIdentifierBodyMass"
+    sourceName="iPhone"
+    unit="kg"
+    value="87.0"
+    startDate="2024-01-01 08:00:00 -0500"
+    endDate="2024-01-01 08:00:00 -0500"
+  />
+  <!-- Body mass: newer entry (should be selected), stored in lb -->
+  <Record
+    type="HKQuantityTypeIdentifierBodyMass"
+    sourceName="iPhone"
+    unit="lb"
+    value="185.0"
+    startDate="2024-06-01 08:00:00 -0500"
+    endDate="2024-06-01 08:00:00 -0500"
+  />
+
+  <!-- Height in cm -->
+  <Record
+    type="HKQuantityTypeIdentifierHeight"
+    sourceName="Health"
+    unit="cm"
+    value="177.8"
+    startDate="2023-01-01 00:00:00 -0500"
+    endDate="2023-01-01 00:00:00 -0500"
+  />
+
+  <!-- Systolic BP -->
+  <Record
+    type="HKQuantityTypeIdentifierBloodPressureSystolic"
+    sourceName="Withings"
+    unit="mmHg"
+    value="125.0"
+    startDate="2024-06-01 09:00:00 -0500"
+    endDate="2024-06-01 09:00:00 -0500"
+  />
+
+  <!-- Resting HR -->
+  <Record
+    type="HKQuantityTypeIdentifierRestingHeartRate"
+    sourceName="Apple Watch"
+    unit="count/min"
+    value="62.0"
+    startDate="2024-06-01 07:00:00 -0500"
+    endDate="2024-06-01 07:00:00 -0500"
+  />
+
+  <!-- HRV SDNN -->
+  <Record
+    type="HKQuantityTypeIdentifierHeartRateVariabilitySDNN"
+    sourceName="Apple Watch"
+    unit="ms"
+    value="45.2"
+    startDate="2024-06-01 07:00:00 -0500"
+    endDate="2024-06-01 07:00:00 -0500"
+  />
+
+  <!-- VO2 Max -->
+  <Record
+    type="HKQuantityTypeIdentifierVO2Max"
+    sourceName="Apple Watch"
+    unit="mL/min·kg"
+    value="42.5"
+    startDate="2024-05-15 12:00:00 -0500"
+    endDate="2024-05-15 12:00:00 -0500"
+  />
+
+  <!-- Blood glucose (mg/dL) -->
+  <Record
+    type="HKQuantityTypeIdentifierBloodGlucose"
+    sourceName="Dexcom"
+    unit="mg/dL"
+    value="95.0"
+    startDate="2024-06-01 07:30:00 -0500"
+    endDate="2024-06-01 07:30:00 -0500"
+  />
+
+  <!-- Blood glucose in mmol/L — older, should not override -->
+  <Record
+    type="HKQuantityTypeIdentifierBloodGlucose"
+    sourceName="Dexcom"
+    unit="mmol/L"
+    value="4.5"
+    startDate="2024-01-01 07:30:00 -0500"
+    endDate="2024-01-01 07:30:00 -0500"
+  />
+
+</HealthData>

@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+
+# Life table cache (re-downloaded on first run)
+data/life_table.parquet
+
+# Apple Health export (personal data, lives in Downloads)
+export.xml
+
+# Claude Code session files
+.claude/
+
+# OS
+.DS_Store
+Thumbs.db
