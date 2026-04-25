@@ -58,9 +58,9 @@ Or double-click `run_tests.bat`.
 | 3 | Apple Health export parser with windowed averaging |
 | 4 | Three-panel CustomTkinter GUI |
 | 5 | Survival curve matplotlib chart embedded in results |
+| 6 | Historical date selector — scrub Apple Health data to any past month |
 
 ## Roadmap
 
 - HRV + resting HR autonomic hazard modifier (Layer 4)
-- PDF drag-and-drop refinement
 - Editable "what-if" scenario overlay on chart

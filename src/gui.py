@@ -9,9 +9,10 @@ Layout:
 """
 from __future__ import annotations
 
+import calendar
 import threading
 import tkinter as tk
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -52,6 +53,9 @@ _WINDOW_OPTS = {
     "Last 7 days":  "last_week",
     "Last 30 days": "last_month",
 }
+
+_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+           "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
 ctk.set_appearance_mode("light")
 ctk.set_default_color_theme("blue")
@@ -134,6 +138,16 @@ class LongevityApp(ctk.CTk, TkinterDnD.DnDWrapper if _TKDND_AVAILABLE else objec
         # Fix 3 — window selector state (default "Last value", not "None")
         self._window_var = tk.StringVar(value="Last value")
 
+        # Historical date selector state — default to same month one year ago
+        _now_dt = datetime.now()
+        self._ah_mode_var = tk.StringVar(value="current")
+        self._ah_month_var = tk.StringVar(value=_MONTHS[_now_dt.month - 1])
+        self._ah_year_var = tk.StringVar(value=str(_now_dt.year - 1))
+        self._ah_month_cb: Optional[ctk.CTkComboBox] = None
+        self._ah_year_cb: Optional[ctk.CTkComboBox] = None
+        self._chart_shown = False
+        self._pending_recalculate = False
+
         self._build_ui()
         self._on_window_change()   # initial load (default is "Last value")
 
@@ -191,7 +205,7 @@ class LongevityApp(ctk.CTk, TkinterDnD.DnDWrapper if _TKDND_AVAILABLE else objec
         self._results_frame.grid(row=2, column=0, sticky="nsew",
                                   padx=20, pady=(0, 20))
         self._results_frame.grid_columnconfigure(0, weight=1)
-        self._results_frame.grid_rowconfigure(1, weight=1)
+        self._results_frame.grid_rowconfigure(2, weight=1)
 
         # Placeholder — shown before first CALCULATE
         self._results_placeholder = ctk.CTkLabel(
@@ -199,7 +213,7 @@ class LongevityApp(ctk.CTk, TkinterDnD.DnDWrapper if _TKDND_AVAILABLE else objec
             text="Click CALCULATE to generate your survival curve.",
             font=_font(13), text_color=_INK4,
         )
-        self._results_placeholder.grid(row=0, column=0, rowspan=2,
+        self._results_placeholder.grid(row=0, column=0, rowspan=3,
                                         padx=20, pady=60)
 
         # Stats strip (hidden until first calculate)
@@ -232,10 +246,19 @@ class LongevityApp(ctk.CTk, TkinterDnD.DnDWrapper if _TKDND_AVAILABLE else objec
             val_lbl.grid(row=1, column=0, pady=(0, 8))
             setattr(self, attr, val_lbl)
 
-        # Matplotlib chart (hidden until first calculate)
+        # Data source timestamp label (row 1, hidden until first calculate)
+        self._results_data_label = ctk.CTkLabel(
+            self._results_frame,
+            text="", font=_font(10), text_color=_INK4, anchor="w",
+        )
+        self._results_data_label.grid(row=1, column=0, sticky="w",
+                                       padx=16, pady=(0, 2))
+        self._results_data_label.grid_remove()
+
+        # Matplotlib chart (hidden until first calculate, now at row 2)
         self._fig = Figure(facecolor=_BG, dpi=96)
         self._canvas = FigureCanvasTkAgg(self._fig, master=self._results_frame)
-        self._canvas.get_tk_widget().grid(row=1, column=0, sticky="nsew",
+        self._canvas.get_tk_widget().grid(row=2, column=0, sticky="nsew",
                                           padx=16, pady=(0, 16))
         self._canvas.get_tk_widget().grid_remove()
 
@@ -261,7 +284,7 @@ class LongevityApp(ctk.CTk, TkinterDnD.DnDWrapper if _TKDND_AVAILABLE else objec
 
         hdr = _panel_header(f, "Apple Health")
 
-        # Fix 3 — window selector in header (columns: 0=title, 1=window, 2=status)
+        # Window selector in header (columns: 0=title, 1=window, 2=status)
         ctk.CTkComboBox(
             hdr,
             values=list(_WINDOW_OPTS.keys()),
@@ -280,8 +303,66 @@ class LongevityApp(ctk.CTk, TkinterDnD.DnDWrapper if _TKDND_AVAILABLE else objec
         )
         self._ah_status.grid(row=0, column=2, sticky="e", padx=14)
 
+        # ── Date mode row (row 2): [● Current] [● Historical] [Month▾] [Year▾] ──
+        date_row = ctk.CTkFrame(f, fg_color="transparent")
+        date_row.grid(row=2, column=0, columnspan=3, sticky="ew",
+                      padx=12, pady=(6, 2))
+        for col in range(5):
+            date_row.grid_columnconfigure(col, weight=0)
+        date_row.grid_columnconfigure(4, weight=1)  # trailing spacer
+
+        ctk.CTkRadioButton(
+            date_row, text="Current", variable=self._ah_mode_var, value="current",
+            command=self._on_ah_date_mode_change,
+            font=_font(11), text_color=_INK2,
+            fg_color=_ACCENT, hover_color=_ACCENT_HVR,
+            radiobutton_width=14, radiobutton_height=14,
+        ).grid(row=0, column=0, sticky="w")
+
+        ctk.CTkRadioButton(
+            date_row, text="Historical", variable=self._ah_mode_var, value="historical",
+            command=self._on_ah_date_mode_change,
+            font=_font(11), text_color=_INK2,
+            fg_color=_ACCENT, hover_color=_ACCENT_HVR,
+            radiobutton_width=14, radiobutton_height=14,
+        ).grid(row=0, column=1, sticky="w", padx=(12, 4))
+
+        _now_dt = datetime.now()
+        year_opts = [str(y) for y in range(_now_dt.year - 9, _now_dt.year + 1)]
+
+        self._ah_month_cb = ctk.CTkComboBox(
+            date_row,
+            values=_MONTHS,
+            variable=self._ah_month_var,
+            state="readonly",
+            width=72, height=24,
+            font=_font(11),
+            border_color=_LINE, fg_color=_BG,
+            button_color=_LINE, button_hover_color="#d0d8e0",
+            dropdown_fg_color=_BG, dropdown_text_color=_INK1,
+            command=self._on_ah_historical_date_change,
+        )
+        self._ah_month_cb.grid(row=0, column=2, padx=(4, 2))
+        self._ah_month_cb.grid_remove()
+
+        self._ah_year_cb = ctk.CTkComboBox(
+            date_row,
+            values=year_opts,
+            variable=self._ah_year_var,
+            state="readonly",
+            width=68, height=24,
+            font=_font(11),
+            border_color=_LINE, fg_color=_BG,
+            button_color=_LINE, button_hover_color="#d0d8e0",
+            dropdown_fg_color=_BG, dropdown_text_color=_INK1,
+            command=self._on_ah_historical_date_change,
+        )
+        self._ah_year_cb.grid(row=0, column=3, padx=(0, 2))
+        self._ah_year_cb.grid_remove()
+
+        # ── Fields (row 3 onwards) ─────────────────────────────────────────────
         for i, (key, label, unit) in enumerate(self._AH_FIELDS):
-            r = i + 2
+            r = i + 3
             dot = ctk.CTkLabel(f, text="●", font=_font(10),
                                text_color=_INK4, width=18, anchor="w")
             dot.grid(row=r, column=0, sticky="w", padx=(12, 0), pady=3)
@@ -304,14 +385,14 @@ class LongevityApp(ctk.CTk, TkinterDnD.DnDWrapper if _TKDND_AVAILABLE else objec
                               placeholder_text=unit or key,
                               width=120, height=26)
             ent.grid(row=r, column=2, sticky="e", padx=12, pady=3)
-            ent.grid_remove()   # hidden until "None" mode
+            ent.grid_remove()
             self._ah_entries[key] = ent
 
         self._ah_timestamp = ctk.CTkLabel(
             f, text="", font=_font(10), text_color=_INK4, anchor="w",
         )
         self._ah_timestamp.grid(
-            row=len(self._AH_FIELDS) + 2, column=0, columnspan=3,
+            row=len(self._AH_FIELDS) + 3, column=0, columnspan=3,
             sticky="w", padx=12, pady=(4, 12),
         )
         return f
@@ -460,15 +541,18 @@ class LongevityApp(ctk.CTk, TkinterDnD.DnDWrapper if _TKDND_AVAILABLE else objec
             for key in self._ah_vars:
                 self._ah_entries[key].grid_remove()
                 self._ah_labels[key].grid()
+            if self._chart_shown:
+                self._pending_recalculate = True
             self._load_apple_health_async()
 
     def _load_apple_health_async(self):
         window = _WINDOW_OPTS.get(self._window_var.get(), "last_value")
+        as_of = self._get_as_of_datetime()
 
         def _worker():
             try:
                 from src.apple_health import get_latest_biometrics
-                data = get_latest_biometrics(_EXPORT_PATH, window=window)
+                data = get_latest_biometrics(_EXPORT_PATH, window=window, as_of=as_of)
                 self.after(0, lambda: self._on_ah_loaded(data))
             except FileNotFoundError:
                 self.after(0, self._on_ah_not_found)
@@ -479,15 +563,40 @@ class LongevityApp(ctk.CTk, TkinterDnD.DnDWrapper if _TKDND_AVAILABLE else objec
 
     def _on_ah_loaded(self, data: Dict):
         self._ah_data = data
-        # Fix 3 — read averaging counts for "(avg N)" annotations
         counts = data.get("_counts", {})
         found = sum(1 for k, _, _ in self._AH_FIELDS if data.get(k) is not None)
         total = len(self._AH_FIELDS)
 
-        self._ah_status.configure(
-            text=f"Connected  •  {found}/{total} fields",
-            text_color=_OK,
-        )
+        # Update year dropdown from the export's actual date range
+        date_range = data.get("_date_range")
+        if date_range and self._ah_year_cb:
+            min_dt, max_dt = date_range
+            if min_dt and max_dt:
+                year_opts = [str(y) for y in range(min_dt.year, max_dt.year + 1)]
+                if year_opts:
+                    self._ah_year_cb.configure(values=year_opts)
+                    if self._ah_year_var.get() not in year_opts:
+                        self._ah_year_var.set(year_opts[-1])
+
+        # Status text differs for historical vs current mode
+        if self._ah_mode_var.get() == "historical":
+            m = self._ah_month_var.get()
+            y = self._ah_year_var.get()
+            if found == 0:
+                self._ah_status.configure(
+                    text=f"No data found before {m} {y}", text_color=_WARN,
+                )
+            else:
+                self._ah_status.configure(
+                    text=f"as of {m} {y}  •  {found}/{total} fields",
+                    text_color=_OK,
+                )
+        else:
+            self._ah_status.configure(
+                text=f"Connected  •  {found}/{total} fields",
+                text_color=_OK,
+            )
+
         self._ah_timestamp.configure(
             text=f"Loaded {datetime.now().strftime('%H:%M:%S')}",
         )
@@ -505,11 +614,16 @@ class LongevityApp(ctk.CTk, TkinterDnD.DnDWrapper if _TKDND_AVAILABLE else objec
                     text_color=_INK1,
                     font=_font(12),
                 )
-                self._ah_raw[key] = str(val)   # store numeric-only for None mode pre-fill
+                self._ah_raw[key] = str(val)
             else:
                 dot.configure(text_color=_WARN)
                 lbl.configure(text="—", text_color=_INK4)
                 self._ah_raw.pop(key, None)
+
+        # Auto-recalculate if a chart is already showing and mode changed
+        if self._pending_recalculate:
+            self._pending_recalculate = False
+            self._on_calculate()
 
     def _on_ah_not_found(self):
         self._ah_status.configure(text="Not found", text_color=_WARN)
@@ -522,6 +636,45 @@ class LongevityApp(ctk.CTk, TkinterDnD.DnDWrapper if _TKDND_AVAILABLE else objec
     def _on_ah_error(self, msg: str):
         self._ah_status.configure(text="Error", text_color="#e74c3c")
         self._ah_timestamp.configure(text=msg[:80])
+
+    # ------------------------------------------------------- Date mode helpers
+
+    def _get_as_of_datetime(self) -> Optional[datetime]:
+        """Return last-second of the selected month/year, or None for current mode."""
+        if self._ah_mode_var.get() != "historical":
+            return None
+        try:
+            month_num = _MONTHS.index(self._ah_month_var.get()) + 1
+            year_num = int(self._ah_year_var.get())
+            last_day = calendar.monthrange(year_num, month_num)[1]
+            return datetime(year_num, month_num, last_day, 23, 59, 59)
+        except (ValueError, IndexError):
+            return None
+
+    def _on_ah_date_mode_change(self):
+        """Called when Current/Historical radio button changes."""
+        mode = self._ah_mode_var.get()
+        if mode == "historical":
+            if self._ah_month_cb:
+                self._ah_month_cb.grid()
+            if self._ah_year_cb:
+                self._ah_year_cb.grid()
+        else:
+            if self._ah_month_cb:
+                self._ah_month_cb.grid_remove()
+            if self._ah_year_cb:
+                self._ah_year_cb.grid_remove()
+        if self._window_var.get() != "None":
+            if self._chart_shown:
+                self._pending_recalculate = True
+            self._load_apple_health_async()
+
+    def _on_ah_historical_date_change(self, _val=None):
+        """Called when the month or year combobox changes in Historical mode."""
+        if self._ah_mode_var.get() == "historical" and self._window_var.get() != "None":
+            if self._chart_shown:
+                self._pending_recalculate = True
+            self._load_apple_health_async()
 
     # ----------------------------------------------------------- Lab parsing --
 
@@ -730,10 +883,27 @@ class LongevityApp(ctk.CTk, TkinterDnD.DnDWrapper if _TKDND_AVAILABLE else objec
         print(f"5yr / 10yr risk     : {r5*100:.1f}% / {r10*100:.1f}%")
         print(f"Median remaining    : {med:.1f} yrs")
 
+        # Determine data label and source description for the chart + timestamp
+        window_val = self._window_var.get()
+        if window_val == "None":
+            data_label = "You (manual)"
+            source_text = "Based on manually entered data"
+        elif self._ah_mode_var.get() == "historical":
+            m = self._ah_month_var.get()
+            y = self._ah_year_var.get()
+            data_label = f"You ({m} {y})"
+            source_text = f"Based on Apple Health data as of {m} {y}"
+        else:
+            data_label = "You"
+            source_text = "Based on current Apple Health data"
+
         # Reveal chart area, hide placeholder
         self._results_placeholder.grid_remove()
         self._stats_frame.grid()
+        self._results_data_label.configure(text=source_text)
+        self._results_data_label.grid()
         self._canvas.get_tk_widget().grid()
+        self._chart_shown = True
 
         # Update stat cards
         self._stat_r5.configure(text=f"{r5*100:.1f}%")
@@ -743,7 +913,8 @@ class LongevityApp(ctk.CTk, TkinterDnD.DnDWrapper if _TKDND_AVAILABLE else objec
             text=f"{ascvd*100:.1f}%" if ascvd is not None else "—"
         )
 
-        self._update_chart(age, curve, baseline_curve, r5, r10, med, rh)
+        self._update_chart(age, curve, baseline_curve, r5, r10, med, rh,
+                           data_label=data_label)
 
 
     def _update_chart(
@@ -755,6 +926,7 @@ class LongevityApp(ctk.CTk, TkinterDnD.DnDWrapper if _TKDND_AVAILABLE else objec
         r10: float,
         med: float,
         rh: float,
+        data_label: str = "You",
     ):
         self._fig.clear()
         ax = self._fig.add_subplot(111)
@@ -777,7 +949,7 @@ class LongevityApp(ctk.CTk, TkinterDnD.DnDWrapper if _TKDND_AVAILABLE else objec
         ax.plot(yb, sb, color=_INK4, linestyle="--", linewidth=1.5,
                 label="Population baseline", alpha=0.75)
         ax.plot(ya, sa, color=_ACCENT, linewidth=2.5,
-                label=f"Your trajectory  (hazard {rh:.2f}×)")
+                label=f"{data_label}  (hazard {rh:.2f}×)")
 
         # 5-yr and 10-yr callouts
         for yr, risk, col in [(5, r5, _WARN), (10, r10, _ACCENT)]:
