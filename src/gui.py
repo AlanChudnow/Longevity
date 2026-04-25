@@ -13,9 +13,12 @@ import threading
 import tkinter as tk
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 import customtkinter as ctk
+import numpy as np
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from matplotlib.figure import Figure
 
 try:
     from tkinterdnd2 import TkinterDnD, DND_FILES
@@ -187,14 +190,53 @@ class LongevityApp(ctk.CTk):
         self._results_frame.grid(row=2, column=0, sticky="nsew",
                                   padx=20, pady=(0, 20))
         self._results_frame.grid_columnconfigure(0, weight=1)
-        self._results_frame.grid_rowconfigure(0, weight=1)
+        self._results_frame.grid_rowconfigure(1, weight=1)
 
-        self._results_label = ctk.CTkLabel(
+        # Placeholder — shown before first CALCULATE
+        self._results_placeholder = ctk.CTkLabel(
             self._results_frame,
             text="Click CALCULATE to generate your survival curve.",
             font=_font(13), text_color=_INK4,
         )
-        self._results_label.grid(row=0, column=0, padx=20, pady=40)
+        self._results_placeholder.grid(row=0, column=0, rowspan=2,
+                                        padx=20, pady=60)
+
+        # Stats strip (hidden until first calculate)
+        self._stats_frame = ctk.CTkFrame(
+            self._results_frame, fg_color="transparent",
+        )
+        self._stats_frame.grid(row=0, column=0, sticky="ew",
+                                padx=16, pady=(12, 4))
+        self._stats_frame.grid_columnconfigure((0, 1, 2, 3), weight=1,
+                                               uniform="stat")
+        self._stats_frame.grid_remove()
+
+        for col, (title, attr) in enumerate([
+            ("5-yr Risk",        "_stat_r5"),
+            ("10-yr Risk",       "_stat_r10"),
+            ("Median Remaining", "_stat_med"),
+            ("ASCVD 10-yr",      "_stat_ascvd"),
+        ]):
+            card = ctk.CTkFrame(
+                self._stats_frame, fg_color=_SURFACE3,
+                corner_radius=8, border_width=1, border_color=_LINE,
+            )
+            card.grid(row=0, column=col, sticky="nsew",
+                      padx=(0 if col == 0 else 6, 0))
+            card.grid_columnconfigure(0, weight=1)
+            ctk.CTkLabel(card, text=title, font=_font(10),
+                         text_color=_INK3).grid(row=0, column=0, pady=(8, 2))
+            val_lbl = ctk.CTkLabel(card, text="—", font=_font(18, "bold"),
+                                   text_color=_ACCENT)
+            val_lbl.grid(row=1, column=0, pady=(0, 8))
+            setattr(self, attr, val_lbl)
+
+        # Matplotlib chart (hidden until first calculate)
+        self._fig = Figure(facecolor=_BG, dpi=96)
+        self._canvas = FigureCanvasTkAgg(self._fig, master=self._results_frame)
+        self._canvas.get_tk_widget().grid(row=1, column=0, sticky="nsew",
+                                          padx=16, pady=(0, 16))
+        self._canvas.get_tk_widget().grid_remove()
 
     # ----------------------------------------------------------------- P1 --
 
@@ -568,10 +610,9 @@ class LongevityApp(ctk.CTk):
             wt_kg = d.get("weight_kg")
 
         if age is None:
-            self._results_label.configure(
-                text="Age not found in Apple Health.\nCannot calculate without age.",
+            self._results_placeholder.configure(
+                text="Age not found.\nEnter age in Apple Health panel or use None mode.",
                 text_color=_WARN,
-                font=_font(13),
             )
             return
 
@@ -609,6 +650,8 @@ class LongevityApp(ctk.CTk):
         if tc and hdl:
             ascvd = ascvd_10yr_risk(features)
 
+        baseline_curve = integrate_survival(age, sex, rel_hazard=1.0)
+
         print("\n--- Longevity Calculator Results ---")
         print(f"Age {age}  sex={sex}  smoker={smoker}  diabetes={diabetes}")
         if tc:  print(f"TC={tc}  HDL={hdl}  LDL={ldl}")
@@ -619,21 +662,92 @@ class LongevityApp(ctk.CTk):
         print(f"5yr / 10yr risk     : {r5*100:.1f}% / {r10*100:.1f}%")
         print(f"Median remaining    : {med:.1f} yrs")
 
-        ascvd_line = (f"    10-yr ASCVD risk: {ascvd*100:.1f}%"
-                      if ascvd is not None else "")
-        self._results_label.configure(
-            text=(
-                f"Age {age}  ·  {sex.capitalize()}"
-                f"  ·  Relative hazard {rh:.2f}\n\n"
-                f"    5-yr risk: {r5*100:.1f}%"
-                f"      10-yr risk: {r10*100:.1f}%"
-                f"      Median remaining: {med:.1f} yrs"
-                f"{ascvd_line}\n\n"
-                f"(Survival chart coming in Phase 5)"
-            ),
-            text_color=_INK1,
-            font=_font(13),
+        # Reveal chart area, hide placeholder
+        self._results_placeholder.grid_remove()
+        self._stats_frame.grid()
+        self._canvas.get_tk_widget().grid()
+
+        # Update stat cards
+        self._stat_r5.configure(text=f"{r5*100:.1f}%")
+        self._stat_r10.configure(text=f"{r10*100:.1f}%")
+        self._stat_med.configure(text=f"{med:.0f} yrs")
+        self._stat_ascvd.configure(
+            text=f"{ascvd*100:.1f}%" if ascvd is not None else "—"
         )
+
+        self._update_chart(age, curve, baseline_curve, r5, r10, med, rh)
+
+
+    def _update_chart(
+        self,
+        age0: int,
+        actual_curve: List[Dict],
+        baseline_curve: List[Dict],
+        r5: float,
+        r10: float,
+        med: float,
+        rh: float,
+    ):
+        self._fig.clear()
+        ax = self._fig.add_subplot(111)
+        ax.set_facecolor(_BG)
+
+        # x = years from now, y = survival %
+        yb = [r["age"] - age0 for r in baseline_curve]
+        sb = [r["S"] * 100       for r in baseline_curve]
+        ya = [r["age"] - age0 for r in actual_curve]
+        sa = [r["S"] * 100       for r in actual_curve]
+
+        # Shade area between curves
+        x_fill = np.linspace(0, min(yb[-1], ya[-1]), 500)
+        sb_i = np.interp(x_fill, yb, sb)
+        sa_i = np.interp(x_fill, ya, sa)
+        fill_color = _WARN if rh > 1.0 else _OK
+        ax.fill_between(x_fill, sa_i, sb_i, alpha=0.10, color=fill_color)
+
+        # Curves
+        ax.plot(yb, sb, color=_INK4, linestyle="--", linewidth=1.5,
+                label="Population baseline", alpha=0.75)
+        ax.plot(ya, sa, color=_ACCENT, linewidth=2.5,
+                label=f"Your trajectory  (hazard {rh:.2f}×)")
+
+        # 5-yr and 10-yr callouts
+        for yr, risk, col in [(5, r5, _WARN), (10, r10, _ACCENT)]:
+            if yr <= ya[-1]:
+                s_val = (1 - risk) * 100
+                ax.axvline(yr, color=col, linestyle=":", linewidth=1.1, alpha=0.6)
+                ax.annotate(
+                    f"{yr}-yr: {risk*100:.1f}% risk",
+                    xy=(yr, s_val),
+                    xytext=(yr + 1.5, min(s_val + 6, 98)),
+                    fontsize=8.5, color=col,
+                    arrowprops=dict(arrowstyle="-", color=col, lw=0.8),
+                )
+
+        # Median remaining years
+        if 0 < med <= ya[-1]:
+            ax.axvline(med, color=_OK, linestyle="--", linewidth=1.5, alpha=0.7)
+            ax.text(med + 0.6, 53, f"Median\n{med:.0f} yrs",
+                    fontsize=8.5, color=_OK, va="bottom")
+
+        # Axes styling
+        x_max = min(int(ya[-1]), 60)
+        ax.set_xlim(0, x_max)
+        ax.set_ylim(0, 105)
+        ax.set_xlabel("Years from now", fontsize=10, color=_INK2)
+        ax.set_ylabel("Survival probability (%)", fontsize=10, color=_INK2)
+        ax.tick_params(colors=_INK3, labelsize=9)
+        for spine in ("top", "right"):
+            ax.spines[spine].set_visible(False)
+        for spine in ("left", "bottom"):
+            ax.spines[spine].set_color(_LINE)
+        ax.yaxis.grid(True, color=_LINE, linewidth=0.7, alpha=0.8)
+        ax.set_axisbelow(True)
+        ax.legend(fontsize=9, framealpha=0.9, loc="upper right",
+                  edgecolor=_LINE)
+
+        self._fig.tight_layout(pad=1.5)
+        self._canvas.draw()
 
 
 # ---------------------------------------------------------------------------
