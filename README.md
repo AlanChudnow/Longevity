@@ -72,7 +72,7 @@ Run `python scripts/convert_data_to_json.py` to regenerate these from source (re
 | 1 | Data files and bundled libraries | Complete |
 | 2 | `health_models.js` — survival math | Complete |
 | 3 | `lab_parser.js` — PDF extraction | Complete |
-| 4 | `apple_health.js` — XML streaming | Pending |
+| 4 | `apple_health.js` — XML streaming | Complete |
 | 5 | `index.html` and `css/app.css` — layout | Pending |
 | 6 | `app.js` — full wiring | Pending |
 | 7 | `chart.js` — survival curve | Pending |
@@ -80,10 +80,12 @@ Run `python scripts/convert_data_to_json.py` to regenerate these from source (re
 
 ### Regression tests
 
-Open the test page to verify model math in a browser:
+Open test pages to verify logic in a browser:
 
 ```
-http://localhost:8765/tests/test_health_models.html
+http://localhost:8765/tests/test_health_models.html   # survival math
+http://localhost:8765/tests/test_lab_parser.html      # PDF extraction (drop lab PDFs)
+http://localhost:8765/tests/test_apple_health.html    # XML streaming (drop export.xml)
 ```
 
 ---
