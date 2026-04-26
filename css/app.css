@@ -235,7 +235,7 @@ input[type=checkbox] {
 }
 
 .ah-reload-btn {
-  display: none;
+  display: block;
   width: 100%;
   margin-top: 6px;
   padding: 5px;
@@ -664,6 +664,28 @@ input[type=radio] {
 .status-warn { color: var(--warn); }
 .status-err  { color: var(--danger); }
 .status-dim  { color: var(--ink-4); }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Apple Health manual-entry mode toggle
+   Add class .ah-mode-manual to #panel-ah to switch all fields to editable inputs
+───────────────────────────────────────────────────────────────────────────── */
+
+/* Auto mode (default): hide inputs and unit spans, show value labels */
+.ah-field input        { display: none; }
+.ah-field .ah-field-unit { display: none; }
+
+/* Manual mode: show inputs and unit spans, hide value labels */
+.ah-mode-manual .ah-field input:not([readonly])  { display: block; }
+.ah-mode-manual .ah-field .ah-field-unit         { display: inline; }
+.ah-mode-manual .ah-field .ah-field-value        { display: none; }
+
+/* BMI is always readonly-computed in manual mode — keep it styled distinctly */
+.ah-mode-manual #inp-bmi {
+  display: block;
+  background: var(--surface-2);
+  cursor: default;
+  color: var(--ink-2);
+}
 
 /* ─────────────────────────────────────────────────────────────────────────────
    Responsive — stack panels at ≤768px
