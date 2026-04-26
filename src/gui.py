@@ -10,6 +10,7 @@ Layout:
 from __future__ import annotations
 
 import calendar
+import re
 import threading
 import tkinter as tk
 from datetime import datetime, timedelta
@@ -148,6 +149,9 @@ class LongevityApp(ctk.CTk, TkinterDnD.DnDWrapper if _TKDND_AVAILABLE else objec
         self._chart_shown = False
         self._pending_recalculate = False
 
+        self._var_zip  = tk.StringVar()
+        self._zip_info: Dict = {}
+
         self._build_ui()
         self._on_window_change()   # initial load (default is "Last value")
 
@@ -217,8 +221,9 @@ class LongevityApp(ctk.CTk, TkinterDnD.DnDWrapper if _TKDND_AVAILABLE else objec
         self._results_frame = _panel(self)
         self._results_frame.grid(row=2, column=0, sticky="nsew",
                                   padx=20, pady=(0, 20))
-        self._results_frame.grid_columnconfigure(0, weight=1)
-        self._results_frame.grid_rowconfigure(2, weight=1)
+        self._results_frame.grid_columnconfigure(0, weight=1)   # left 1/3
+        self._results_frame.grid_columnconfigure(1, weight=2)   # right 2/3 (chart)
+        self._results_frame.grid_rowconfigure(2, weight=1)      # risk panel / chart row
 
         # Placeholder — shown before first CALCULATE
         self._results_placeholder = ctk.CTkLabel(
@@ -226,7 +231,7 @@ class LongevityApp(ctk.CTk, TkinterDnD.DnDWrapper if _TKDND_AVAILABLE else objec
             text="Click CALCULATE to generate your survival curve.",
             font=_font(13), text_color=_INK4,
         )
-        self._results_placeholder.grid(row=0, column=0, rowspan=3,
+        self._results_placeholder.grid(row=0, column=0, rowspan=3, columnspan=2,
                                         padx=20, pady=60)
 
         # Stats strip (hidden until first calculate)
@@ -234,7 +239,7 @@ class LongevityApp(ctk.CTk, TkinterDnD.DnDWrapper if _TKDND_AVAILABLE else objec
             self._results_frame, fg_color="transparent",
         )
         self._stats_frame.grid(row=0, column=0, sticky="ew",
-                                padx=16, pady=(12, 4))
+                                padx=(16, 4), pady=(12, 4))
         self._stats_frame.grid_columnconfigure((0, 1, 2, 3), weight=1,
                                                uniform="stat")
         self._stats_frame.grid_remove()
@@ -265,15 +270,108 @@ class LongevityApp(ctk.CTk, TkinterDnD.DnDWrapper if _TKDND_AVAILABLE else objec
             text="", font=_font(10), text_color=_INK4, anchor="w",
         )
         self._results_data_label.grid(row=1, column=0, sticky="w",
-                                       padx=16, pady=(0, 2))
+                                       padx=(16, 4), pady=(0, 2))
         self._results_data_label.grid_remove()
 
         # Matplotlib chart (hidden until first calculate, now at row 2)
         self._fig = Figure(facecolor=_BG, dpi=96)
         self._canvas = FigureCanvasTkAgg(self._fig, master=self._results_frame)
-        self._canvas.get_tk_widget().grid(row=2, column=0, sticky="nsew",
-                                          padx=16, pady=(0, 16))
+        self._canvas.get_tk_widget().grid(row=0, column=1, rowspan=3, sticky="nsew",
+                                          padx=(4, 16), pady=16)
         self._canvas.get_tk_widget().grid_remove()
+
+        self._build_risk_panel()
+
+    # -------------------------------------------------------- Risk panel ------
+
+    def _build_risk_panel(self):
+        """Create the two-column risk factors panel (hidden until first Calculate)."""
+        outer = ctk.CTkFrame(
+            self._results_frame,
+            fg_color=_SURFACE3,
+            corner_radius=8,
+            border_width=1,
+            border_color=_LINE,
+        )
+        outer.grid(row=2, column=0, sticky="nsew", padx=(16, 4), pady=(0, 16))
+        outer.grid_columnconfigure(0, weight=1)
+        outer.grid_remove()
+        self._risk_panel = outer
+
+        body = ctk.CTkFrame(outer, fg_color="transparent")
+        body.grid(row=0, column=0, sticky="ew")
+        body.grid_columnconfigure(0, weight=1)
+        body.grid_columnconfigure(1, weight=0)
+        body.grid_columnconfigure(2, weight=1)
+
+        # Vertical divider
+        ctk.CTkFrame(body, fg_color=_LINE, width=1, corner_radius=0).grid(
+            row=0, column=1, rowspan=1, sticky="ns",
+        )
+
+        self._risk_left  = ctk.CTkFrame(body, fg_color="transparent")
+        self._risk_left.grid(row=0, column=0, sticky="nsew", pady=(6, 10))
+        self._risk_left.grid_columnconfigure(0, weight=1)
+
+        self._risk_right = ctk.CTkFrame(body, fg_color="transparent")
+        self._risk_right.grid(row=0, column=2, sticky="nsew", pady=(6, 10))
+        self._risk_right.grid_columnconfigure(0, weight=1)
+
+    def _update_risk_panel(self, positive, negative):
+        """Populate (or repopulate) the risk factors panel from evaluate_risk_factors output."""
+        for w in self._risk_left.winfo_children():
+            w.destroy()
+        for w in self._risk_right.winfo_children():
+            w.destroy()
+
+        _ORDER = {"high": 0, "medium": 1, "low": 2}
+        MAX = 8
+
+        pos = sorted(positive, key=lambda x: _ORDER.get(x[1], 3))
+        neg = sorted(negative, key=lambda x: _ORDER.get(x[1], 3))
+        pos_extra = max(0, len(pos) - MAX)
+        neg_extra = max(0, len(neg) - MAX)
+        pos = pos[:MAX]
+        neg = neg[:MAX]
+
+        if not pos:
+            ctk.CTkLabel(
+                self._risk_left,
+                text="Enter optional fields for full analysis",
+                font=_font(10), text_color=_INK4, anchor="w", wraplength=240,
+            ).grid(row=0, column=0, sticky="w", padx=14, pady=3)
+        else:
+            for i, (label, _impact) in enumerate(pos):
+                ctk.CTkLabel(
+                    self._risk_left, text=f"✅  {label}",
+                    font=_font(10), text_color="#27ae60", anchor="w",
+                ).grid(row=i, column=0, sticky="w", padx=14, pady=2)
+            if pos_extra > 0:
+                ctk.CTkLabel(
+                    self._risk_left, text=f"+ {pos_extra} more",
+                    font=_font(9), text_color=_INK4, anchor="w",
+                ).grid(row=len(pos), column=0, sticky="w", padx=14, pady=(0, 4))
+
+        if not neg:
+            ctk.CTkLabel(
+                self._risk_right,
+                text="No significant risk factors identified",
+                font=_font(10), text_color=_INK3, anchor="w", wraplength=240,
+            ).grid(row=0, column=0, sticky="w", padx=14, pady=3)
+        else:
+            for i, (label, _impact) in enumerate(neg):
+                color = _WARN if "not entered" in label.lower() else "#e74c3c"
+                ctk.CTkLabel(
+                    self._risk_right, text=f"❌  {label}",
+                    font=_font(10), text_color=color, anchor="w",
+                ).grid(row=i, column=0, sticky="w", padx=14, pady=2)
+            if neg_extra > 0:
+                ctk.CTkLabel(
+                    self._risk_right, text=f"+ {neg_extra} more",
+                    font=_font(9), text_color=_INK4, anchor="w",
+                ).grid(row=len(neg), column=0, sticky="w", padx=14, pady=(0, 4))
+
+        self._risk_panel.grid()
 
     # ----------------------------------------------------------------- P1 --
 
@@ -437,6 +535,7 @@ class LongevityApp(ctk.CTk, TkinterDnD.DnDWrapper if _TKDND_AVAILABLE else objec
         ("ldl",               "LDL",               "mg/dL"),
         ("triglycerides",     "Triglycerides",     "mg/dL"),
         ("apob",              "ApoB",              "mg/dL"),
+        ("crp",               "CRP",               "mg/L"),
     ]
 
     def _build_panel_lab(self, parent) -> ctk.CTkFrame:
@@ -478,7 +577,8 @@ class LongevityApp(ctk.CTk, TkinterDnD.DnDWrapper if _TKDND_AVAILABLE else objec
                                sticky="w", padx=14, pady=(0, 6))
 
         # ── Lab value entry fields (rows 5+) ───────────────────────────
-        self._lab_vars: Dict[str, ctk.StringVar] = {}
+        self._lab_vars:    Dict[str, ctk.StringVar]  = {}
+        self._lab_entries: Dict[str, ctk.CTkEntry]   = {}
         for i, (key, label, unit) in enumerate(self._LAB_FIELDS):
             r = i + 5
             ctk.CTkLabel(f, text=label, font=_font(12), text_color=_INK2,
@@ -486,9 +586,51 @@ class LongevityApp(ctk.CTk, TkinterDnD.DnDWrapper if _TKDND_AVAILABLE else objec
                 row=r, column=0, sticky="w", padx=14, pady=4)
             var = ctk.StringVar()
             self._lab_vars[key] = var
-            self._entry(f, var, placeholder_text=unit,
-                        width=96, height=30).grid(
-                row=r, column=1, sticky="e", padx=14, pady=4)
+            ent = self._entry(f, var, placeholder_text=unit, width=96, height=30)
+            ent.grid(row=r, column=1, sticky="e", padx=14, pady=4)
+            self._lab_entries[key] = ent
+
+        # ── CRP reference ranges + FocusOut color feedback ────────────
+        n = len(self._LAB_FIELDS)
+        ctk.CTkLabel(
+            f,
+            text="<1.0 low risk  ·  1–3 moderate  ·  >3 elevated  ·  >10 possible infection",
+            font=_font(9), text_color=_INK4, anchor="w",
+        ).grid(row=n + 5, column=0, columnspan=2, sticky="w", padx=14, pady=(0, 2))
+
+        self._crp_infection_warn = ctk.CTkLabel(
+            f, text="", font=_font(9), text_color="#e74c3c",
+            anchor="w", wraplength=260,
+        )
+        self._crp_infection_warn.grid(row=n + 6, column=0, columnspan=2,
+                                       sticky="w", padx=14, pady=(0, 6))
+        self._crp_infection_warn.grid_remove()
+
+        def _on_crp_focusout(_ev=None):
+            val_str = self._lab_vars["crp"].get().strip()
+            ent = self._lab_entries["crp"]
+            self._crp_infection_warn.grid_remove()
+            if not val_str:
+                ent.configure(text_color=_INK2)
+                return
+            crp = self._parse_crp_value(val_str)
+            if crp is None:
+                ent.configure(text_color="#e74c3c")
+                return
+            if crp <= 1.0:
+                ent.configure(text_color=_OK)
+            elif crp <= 3.0:
+                ent.configure(text_color=_INK1)
+            elif crp <= 10.0:
+                ent.configure(text_color=_WARN)
+            else:
+                ent.configure(text_color="#e74c3c")
+                self._crp_infection_warn.configure(
+                    text="⚠  May indicate acute infection — retest when healthy"
+                )
+                self._crp_infection_warn.grid()
+
+        self._lab_entries["crp"].bind("<FocusOut>", _on_crp_focusout)
 
         return f
 
@@ -500,9 +642,29 @@ class LongevityApp(ctk.CTk, TkinterDnD.DnDWrapper if _TKDND_AVAILABLE else objec
 
         _panel_header(f, "Manual Entry & Fitness")
 
-        ctk.CTkLabel(f, text="Smoking status", font=_font(12),
+        # ── ZIP Code (row 2–3) ─────────────────────────────────────────
+        ctk.CTkLabel(f, text="ZIP Code", font=_font(12),
                      text_color=_INK2, anchor="w").grid(
             row=2, column=0, sticky="w", padx=14, pady=(14, 5))
+        zip_ent = self._entry(f, self._var_zip, placeholder_text="12345",
+                              width=90, height=30)
+        zip_ent.grid(row=2, column=1, sticky="e", padx=14, pady=(14, 5))
+        zip_ent.bind("<FocusOut>", self._on_zip_focusout)
+        zip_ent.bind("<Return>",   self._on_zip_focusout)
+
+        self._zip_status = ctk.CTkLabel(
+            f, text="", font=_font(9), text_color=_INK4,
+            anchor="w", wraplength=220,
+        )
+        self._zip_status.grid(row=3, column=0, columnspan=2,
+                               sticky="w", padx=14, pady=(0, 4))
+
+        _separator(f, row=4, padx=14, pady=6)
+
+        # ── Smoking status (row 5) ─────────────────────────────────────
+        ctk.CTkLabel(f, text="Smoking status", font=_font(12),
+                     text_color=_INK2, anchor="w").grid(
+            row=5, column=0, sticky="w", padx=14, pady=(8, 5))
         self._var_smoker = ctk.StringVar(value="never")
         ctk.CTkComboBox(
             f, values=["never", "former", "current"],
@@ -511,20 +673,22 @@ class LongevityApp(ctk.CTk, TkinterDnD.DnDWrapper if _TKDND_AVAILABLE else objec
             border_color=_LINE, fg_color=_BG,
             button_color=_LINE, button_hover_color="#d0d8e0",
             dropdown_fg_color=_BG, dropdown_text_color=_INK1,
-        ).grid(row=2, column=1, sticky="e", padx=14, pady=(14, 5))
+        ).grid(row=5, column=1, sticky="e", padx=14, pady=(8, 5))
 
+        # ── Diabetes (row 6) ───────────────────────────────────────────
         ctk.CTkLabel(f, text="Diabetes", font=_font(12),
                      text_color=_INK2, anchor="w").grid(
-            row=3, column=0, sticky="w", padx=14, pady=5)
+            row=6, column=0, sticky="w", padx=14, pady=5)
         self._var_diabetes = ctk.BooleanVar(value=False)
         ctk.CTkCheckBox(
             f, text="", variable=self._var_diabetes,
             width=24, checkbox_width=20, checkbox_height=20,
             fg_color=_ACCENT, hover_color=_ACCENT_HVR, border_color=_LINE,
-        ).grid(row=3, column=1, sticky="e", padx=14, pady=5)
+        ).grid(row=6, column=1, sticky="e", padx=14, pady=5)
 
-        _separator(f, row=4, padx=14, pady=8)
+        _separator(f, row=7, padx=14, pady=8)
 
+        # ── Fitness inputs (rows 8+) ───────────────────────────────────
         self._fitness_vars: Dict[str, ctk.StringVar] = {}
         fitness_cfg = [
             ("grip_kg",      "Grip Strength",  "kg",  "Dynamometer reading"),
@@ -532,7 +696,7 @@ class LongevityApp(ctk.CTk, TkinterDnD.DnDWrapper if _TKDND_AVAILABLE else objec
         ]
         f.grid_columnconfigure(2, weight=0)
         for i, (key, label, unit, hint) in enumerate(fitness_cfg):
-            r = 5 + i * 3
+            r = 8 + i * 3
             ctk.CTkLabel(f, text=label, font=_font(12),
                          text_color=_INK2, anchor="w").grid(
                 row=r, column=0, sticky="w", padx=14, pady=(6, 0))
@@ -552,7 +716,7 @@ class LongevityApp(ctk.CTk, TkinterDnD.DnDWrapper if _TKDND_AVAILABLE else objec
             f, text="Improving these scores extends your curve.",
             font=_font(11), text_color=_INK4,
             wraplength=200, justify="left", anchor="w",
-        ).grid(row=11, column=0, columnspan=2, sticky="w",
+        ).grid(row=14, column=0, columnspan=2, sticky="w",
                padx=14, pady=(6, 14))
 
         return f
@@ -672,6 +836,55 @@ class LongevityApp(ctk.CTk, TkinterDnD.DnDWrapper if _TKDND_AVAILABLE else objec
         self._ah_status.configure(text="Error", text_color="#e74c3c")
         self._ah_timestamp.configure(text=msg[:80])
 
+    # -------------------------------------------------------- ZIP lookup ------
+
+    def _on_zip_focusout(self, _ev=None):
+        self._do_zip_lookup(self._var_zip.get().strip())
+
+    def _do_zip_lookup(self, val: str):
+        if not val:
+            self._zip_info = {}
+            self._zip_status.configure(text="", text_color=_INK4)
+            return
+        if not re.match(r"^\d{5}$", val):
+            self._zip_info = {}
+            self._zip_status.configure(text="Enter a 5-digit ZIP", text_color=_WARN)
+            return
+        self._zip_status.configure(text="Looking up…", text_color=_INK4)
+
+        def _worker():
+            from src.health_models import geo_zip_info, _ZIP_CACHE_PATH
+            cache_exists = _ZIP_CACHE_PATH.exists()
+            info = geo_zip_info(val)
+            self.after(0, lambda: self._on_zip_result(val, info, cache_exists))
+
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def _on_zip_result(self, val: str, info: Dict, cache_exists: bool = True):
+        self._zip_info = info
+        if not info.get("found"):
+            if not cache_exists:
+                self._zip_status.configure(
+                    text="Geographic data not yet downloaded — national baseline used",
+                    text_color=_INK3,
+                )
+            else:
+                self._zip_status.configure(
+                    text="ZIP not in geographic dataset — national baseline used",
+                    text_color=_INK3,
+                )
+            return
+        county = info.get("county_name", "")
+        state  = info.get("state_abbr", "")
+        le     = info.get("life_expectancy", 0.0)
+        offset = info.get("offset", 0.0)
+        loc    = f"{county}, {state}" if county and state else (county or state or val)
+        sign   = "+" if offset >= 0 else ""
+        self._zip_status.configure(
+            text=f"{loc}  •  LE {le:.1f} yrs  ({sign}{offset:.1f} vs national avg)",
+            text_color=_OK if offset >= 0 else _WARN,
+        )
+
     # ------------------------------------------------------- Date mode helpers
 
     def _get_as_of_datetime(self) -> Optional[datetime]:
@@ -771,18 +984,19 @@ class LongevityApp(ctk.CTk, TkinterDnD.DnDWrapper if _TKDND_AVAILABLE else objec
             "ldl":               "ldl",
             "triglycerides":     "triglycerides",
             "apob":              "apob",   # optional — may not be on every panel
+            "crp":               "crp",   # optional — not always ordered
         }
+        _silent_absent = {"crp"}   # not reported as "not on panel" when missing
         populated, missing = 0, []
         for parser_key, var_key in field_map.items():
             try:
                 val = data.get(parser_key)
                 if val is None:
-                    missing.append(parser_key)
+                    if parser_key not in _silent_absent:
+                        missing.append(parser_key)
                     continue
-                # Only fill if the user hasn't already typed something
-                if not self._lab_vars[var_key].get().strip():
-                    self._lab_vars[var_key].set(str(round(float(val), 1)))
-                    populated += 1
+                self._lab_vars[var_key].set(str(round(float(val), 1)))
+                populated += 1
             except Exception as field_exc:
                 print(f"[Lab] Could not populate {parser_key}: {field_exc}")
                 missing.append(parser_key)
@@ -831,9 +1045,28 @@ class LongevityApp(ctk.CTk, TkinterDnD.DnDWrapper if _TKDND_AVAILABLE else objec
         except ValueError:
             return None
 
+    @staticmethod
+    def _parse_crp_value(s: str) -> Optional[float]:
+        """Parse CRP field; handles '<1' notation. Returns None for blank/invalid/out-of-range."""
+        s = (s or "").strip()
+        if not s:
+            return None
+        if s.startswith("<"):
+            try:
+                return float(s[1:].strip())   # <1 → 1.0; model applies 0.5 correction
+            except ValueError:
+                return None
+        try:
+            v = float(s)
+            return v if 0.0 <= v <= 100.0 else None
+        except ValueError:
+            return None
+
     def _on_calculate(self):
         from src.health_models import (
             ascvd_10yr_risk,
+            evaluate_risk_factors,
+            geo_mx_offset,
             integrate_survival,
             predict_combined_hazard,
             summarize_survival,
@@ -903,7 +1136,7 @@ class LongevityApp(ctk.CTk, TkinterDnD.DnDWrapper if _TKDND_AVAILABLE else objec
         else:
             self._missing_warn.grid_remove()
 
-        crp_raw   = self._lab_extras.get("crp")
+        crp_raw   = self._parse_crp_value(self._lab_vars["crp"].get())
         crp_model = 0.5 if crp_raw is not None and crp_raw <= 1.0 else crp_raw
 
         features = {
@@ -923,27 +1156,50 @@ class LongevityApp(ctk.CTk, TkinterDnD.DnDWrapper if _TKDND_AVAILABLE else objec
             "crp":               crp_model,
         }
 
-        rh    = predict_combined_hazard(features)
-        curve = integrate_survival(age, sex, rel_hazard=rh)
+        # Extra fields used by risk factor evaluation (not the hazard model)
+        features["ldl"]           = ldl
+        features["triglycerides"] = self._parse_float(self._lab_vars["triglycerides"].get())
+        features["apob"]          = self._parse_float(self._lab_vars["apob"].get())
+        features["hba1c"]         = self._lab_extras.get("hba1c")
+        features["crp_raw"]       = crp_raw
+        if self._window_var.get() == "None":
+            features["bmi"]           = self._parse_float(self._ah_vars["bmi"].get())
+            features["resting_hr"]    = self._parse_float(self._ah_vars["resting_hr"].get())
+            features["hrv"]           = self._parse_float(self._ah_vars["hrv"].get())
+            features["blood_glucose"] = self._parse_float(self._ah_vars["blood_glucose"].get())
+        else:
+            _ad = self._ah_data
+            features["bmi"]           = _ad.get("bmi")
+            features["resting_hr"]    = _ad.get("resting_hr")
+            features["hrv"]           = _ad.get("hrv")
+            features["blood_glucose"] = _ad.get("blood_glucose")
+
+        zip_code = self._var_zip.get().strip()
+        geo      = geo_mx_offset(zip_code)
+
+        rh       = predict_combined_hazard(features)
+        rh_geo   = rh * geo
+        curve    = integrate_survival(age, sex, rel_hazard=rh_geo)
         r5, r10, med = summarize_survival(curve, age)
 
         ascvd = None
         if tc and hdl:
             ascvd = ascvd_10yr_risk(features)
 
-        baseline_curve = integrate_survival(age, sex, rel_hazard=1.0)
+        # Baseline shifts to local geography when ZIP is known
+        baseline_curve = integrate_survival(age, sex, rel_hazard=geo)
 
         print("\n--- Longevity Calculator Results ---")
         print(f"Age {age}  sex={sex}  smoker={smoker}  diabetes={diabetes}")
         if tc:  print(f"TC={tc}  HDL={hdl}  LDL={ldl}")
         if vo2: print(f"VO2 max={vo2}  grip={grip_kg}kg  hang={hang_seconds}s")
-        print(f"Combined rel_hazard : {rh:.3f}")
+        print(f"Combined rel_hazard : {rh:.3f}  geo={geo:.3f}  combined={rh_geo:.3f}")
         if ascvd is not None:
             print(f"10yr ASCVD risk     : {ascvd * 100:.1f}%")
         print(f"5yr / 10yr risk     : {r5*100:.1f}% / {r10*100:.1f}%")
         print(f"Median remaining    : {med:.1f} yrs")
 
-        # Determine data label and source description for the chart + timestamp
+        # Determine data label and source description for chart + timestamp
         window_val = self._window_var.get()
         if window_val == "None":
             data_label = "You (manual)"
@@ -956,6 +1212,19 @@ class LongevityApp(ctk.CTk, TkinterDnD.DnDWrapper if _TKDND_AVAILABLE else objec
         else:
             data_label = "You"
             source_text = "Based on current Apple Health data"
+
+        # Baseline label and ZIP annotation
+        zip_info = self._zip_info
+        if zip_info.get("found"):
+            county  = zip_info.get("county_name", "")
+            state   = zip_info.get("state_abbr",  "")
+            loc     = f"{county}, {state}" if county and state else zip_code
+            offset  = zip_info.get("offset", 0.0)
+            sign    = "+" if offset >= 0 else ""
+            baseline_label = f"{loc} average"
+            source_text += f"  •  ZIP {zip_code} ({loc}, LE {sign}{offset:.1f} vs national)"
+        else:
+            baseline_label = "Population average"
 
         # Reveal chart area, hide placeholder
         self._results_placeholder.grid_remove()
@@ -973,8 +1242,11 @@ class LongevityApp(ctk.CTk, TkinterDnD.DnDWrapper if _TKDND_AVAILABLE else objec
             text=f"{ascvd*100:.1f}%" if ascvd is not None else "—"
         )
 
-        self._update_chart(age, curve, baseline_curve, r5, r10, med, rh,
-                           data_label=data_label)
+        self._update_chart(age, curve, baseline_curve, r5, r10, med, rh_geo,
+                           data_label=data_label, baseline_label=baseline_label)
+
+        factors = evaluate_risk_factors(features)
+        self._update_risk_panel(factors["positive"], factors["negative"])
 
 
     def _update_chart(
@@ -987,6 +1259,7 @@ class LongevityApp(ctk.CTk, TkinterDnD.DnDWrapper if _TKDND_AVAILABLE else objec
         med: float,
         rh: float,
         data_label: str = "You",
+        baseline_label: str = "Population average",
     ):
         self._fig.clear()
         ax = self._fig.add_subplot(111)
@@ -1007,7 +1280,7 @@ class LongevityApp(ctk.CTk, TkinterDnD.DnDWrapper if _TKDND_AVAILABLE else objec
 
         # Curves
         ax.plot(yb, sb, color=_INK4, linestyle="--", linewidth=1.5,
-                label="Population baseline", alpha=0.75)
+                label=baseline_label, alpha=0.75)
         ax.plot(ya, sa, color=_ACCENT, linewidth=2.5,
                 label=f"{data_label}  (hazard {rh:.2f}×)")
 

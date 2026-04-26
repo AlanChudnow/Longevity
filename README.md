@@ -60,8 +60,9 @@ Or double-click `run_tests.bat`.
 | 5 | Survival curve matplotlib chart embedded in results |
 | 6 | Historical date selector — scrub Apple Health data to any past month |
 | 7 | BMI live auto-compute; optional field range validation; missing-input warning |
+| 8 | CRP manual entry (Panel 2) with FocusOut color feedback and infection warning |
+| 9 | ZIP code geographic mortality adjustment — CDC USALEEP baseline shift |
 
 ## Roadmap
 
-- HRV + resting HR autonomic hazard modifier (Layer 4)
 - Editable "what-if" scenario overlay on chart
