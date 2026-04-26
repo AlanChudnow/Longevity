@@ -71,7 +71,7 @@ Run `python scripts/convert_data_to_json.py` to regenerate these from source (re
 |-------|-------------|--------|
 | 1 | Data files and bundled libraries | Complete |
 | 2 | `health_models.js` — survival math | Complete |
-| 3 | `lab_parser.js` — PDF extraction | Pending |
+| 3 | `lab_parser.js` — PDF extraction | Complete |
 | 4 | `apple_health.js` — XML streaming | Pending |
 | 5 | `index.html` and `css/app.css` — layout | Pending |
 | 6 | `app.js` — full wiring | Pending |
