@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>health_models.js tests</title>
+  <style>
+    body { font-family: monospace; padding: 20px; background: #0f1720; color: #ccc; }
+    h2   { color: #4A6FA5; }
+    #log { white-space: pre; line-height: 1.6; font-size: 13px; }
+    .pass { color: #3D9970; }
+    .fail { color: #e74c3c; }
+    .warn { color: #E67E22; }
+    .info { color: #9aa6b2; }
+    #summary { margin-top: 16px; font-size: 15px; font-weight: bold; }
+  </style>
+</head>
+<body>
+<h2>health_models.js — Phase 2 Tests</h2>
+<div id="log">Loading…</div>
+<div id="summary"></div>
+
+<script type="module">
+import {
+  init, integrateSurvival, summarizeSurvival,
+  predictAscvdHazard, ascvd10yrRisk,
+  predictVo2Hazard, predictGripHazard,
+  predictCombinedHazard, runTests,
+} from '../js/health_models.js';
+
+const logEl = document.getElementById('log');
+const sumEl = document.getElementById('summary');
+
+function log(msg, cls = 'info') {
+  const span = document.createElement('span');
+  span.className = cls;
+  span.textContent = msg + '\n';
+  logEl.appendChild(span);
+}
+
+// Intercept console to show in page
+const origLog   = console.log.bind(console);
+const origWarn  = console.warn.bind(console);
+const origGroup = console.group.bind(console);
+const origGroupEnd = console.groupEnd.bind(console);
+
+console.log  = (...a) => { origLog(...a);  const s = a.join(' '); log(s, s.startsWith('PASS') ? 'pass' : s.startsWith('FAIL') ? 'fail' : 'info'); };
+console.warn = (...a) => { origWarn(...a); log(a.join(' '), 'warn'); };
+console.group    = (...a) => { origGroup(...a);    log('\n── ' + a.join(' ') + ' ──', 'info'); };
+console.groupEnd = (...a) => { origGroupEnd(...a); };
+
+log('Initialising health_models (loading life_table.json + vo2_norms.json)…');
+
+try {
+  await init('../data');
+  log('Data loaded. Running tests…\n');
+  const { passed, failed } = runTests();
+  sumEl.textContent = `${passed} passed · ${failed} failed`;
+  sumEl.style.color = failed === 0 ? '#3D9970' : '#e74c3c';
+  log('\nOpen browser console for full detail.');
+} catch (err) {
+  log('ERROR: ' + err.message, 'fail');
+  console.error(err);
+}
+</script>
+</body>
+</html>
