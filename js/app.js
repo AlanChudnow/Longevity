@@ -11,6 +11,7 @@ import {
   predictCombinedHazard, ascvd10yrRisk, evaluateRiskFactors,
 } from './health_models.js';
 import { initZipLookup, lookupZip, getGeoHazard } from './zip_lookup.js';
+import { renderSurvivalChart } from './chart.js';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -648,8 +649,28 @@ function onCalculate() {
   const { positive, negative } = evaluateRiskFactors(features);
   updateRiskPanel(positive, negative);
 
-  // ── Store curves for Phase 7 chart ────────────────────────────────────────
-  window._lrcCurves = { userCurve, baselineCurve, age, relHazard, geo };
+  // ── Chart labels ──────────────────────────────────────────────────────────
+  let userLabel = 'You';
+  if (isManual) {
+    userLabel = 'You (manual)';
+  } else if (el('input[name=ah-mode]:checked').value === 'historical') {
+    const m = $('ah-month').options[$('ah-month').selectedIndex].text;
+    userLabel = `You (${m} ${$('ah-year').value})`;
+  }
+  let baselineLabel = 'Population average';
+  if (_zipInfo.found && zip) {
+    const { county_name, state_abbr } = _zipInfo;
+    baselineLabel = county_name && state_abbr
+      ? `${county_name}, ${state_abbr} avg`
+      : 'Local average';
+  }
+
+  // ── Survival chart ────────────────────────────────────────────────────────
+  renderSurvivalChart('survival-chart', {
+    userCurve, baselineCurve, age, relHazard, geo,
+    risk5, risk10, medianYears,
+    userLabel, baselineLabel,
+  });
 
   // Switch to Results tab
   window.switchTab('results');
@@ -660,7 +681,6 @@ function onCalculate() {
 
 function updateRiskPanel(positive, negative) {
   const ORDER = { high: 0, medium: 1, low: 2 };
-  const MAX   = 8;
 
   const pos = positive.slice().sort((a, b) => (ORDER[a.impact] ?? 3) - (ORDER[b.impact] ?? 3));
   const neg = negative.slice().sort((a, b) => (ORDER[a.impact] ?? 3) - (ORDER[b.impact] ?? 3));
@@ -673,20 +693,13 @@ function updateRiskPanel(positive, negative) {
         : '<div class="risk-empty">No significant risk factors identified</div>';
       return;
     }
-    items.slice(0, MAX).forEach(({ label }) => {
+    items.forEach(({ label }) => {
       const isMissing = label.toLowerCase().includes('not entered');
       const d = document.createElement('div');
       d.className   = `risk-item ${isPositive ? 'positive' : isMissing ? 'missing' : 'negative'}`;
       d.textContent = `${isPositive ? '✅' : '❌'}  ${label}`;
       container.appendChild(d);
     });
-    const extra = items.length - MAX;
-    if (extra > 0) {
-      const d = document.createElement('div');
-      d.className   = 'risk-item overflow';
-      d.textContent = `+ ${extra} more`;
-      container.appendChild(d);
-    }
   }
 
   render(pos, $('risk-positive'), true);
