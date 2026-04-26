@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>apple_health.js tests</title>
+  <style>
+    * { box-sizing: border-box; }
+    body  { font-family: monospace; background: #0f1720; color: #ccc; padding: 20px; }
+    h2    { color: #4A6FA5; margin-bottom: 4px; }
+    h3    { color: #9aa6b2; margin: 16px 0 6px; }
+    .zone {
+      border: 2px dashed #3a4654; border-radius: 8px; padding: 24px;
+      text-align: center; cursor: pointer; margin-bottom: 12px;
+      transition: border-color 0.2s;
+    }
+    .zone.over  { border-color: #4A6FA5; background: #1a2535; }
+    .zone.done  { border-color: #3D9970; }
+    .zone.error { border-color: #e74c3c; }
+    .pass  { color: #3D9970; }
+    .fail  { color: #e74c3c; }
+    .warn  { color: #E67E22; }
+    .info  { color: #9aa6b2; }
+    .dim   { color: #4a5568; }
+    pre    { white-space: pre-wrap; font-size: 12px; line-height: 1.5; }
+    .result-block { background: #1a2535; border-radius: 6px; padding: 12px; margin-bottom: 12px; }
+    progress { width: 100%; height: 8px; margin-bottom: 8px; }
+    progress::-webkit-progress-bar  { background: #1a2535; border-radius: 4px; }
+    progress::-webkit-progress-value { background: #4A6FA5; border-radius: 4px; }
+    .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+    @media (max-width: 900px) { .grid3 { grid-template-columns: 1fr; } }
+    input[type=file] { display: none; }
+    .window-sel { margin-bottom: 12px; }
+    .window-sel label { margin-right: 12px; color: #9aa6b2; }
+    .field { display: flex; justify-content: space-between; padding: 3px 0;
+             border-bottom: 1px solid #1e2d3d; }
+    .field .label { color: #9aa6b2; }
+    .field .value { color: #e0e6ed; font-weight: bold; }
+    .field .value.null { color: #4a5568; font-style: italic; }
+  </style>
+</head>
+<body>
+<h2>apple_health.js — Phase 4 Tests</h2>
+<p class="info">Drop your <strong>export.xml</strong> onto a zone. Each zone uses a different data window.</p>
+
+<div class="window-sel">
+  <strong>Data window:</strong>
+  <label><input type="radio" name="win" value="last_value" checked> last_value</label>
+  <label><input type="radio" name="win" value="last_week"> last_week</label>
+  <label><input type="radio" name="win" value="last_month"> last_month</label>
+</div>
+
+<div class="zone" id="zone-main" onclick="document.getElementById('file-main').click()">
+  Drop export.xml here (or click to browse)
+  <br><span class="dim">Apple Health export — can be several hundred MB</span>
+</div>
+<input type="file" id="file-main" accept=".xml">
+
+<progress id="progress" value="0" max="1" style="display:none"></progress>
+
+<div class="result-block" id="result-biometrics">
+  <pre class="dim">Awaiting file…</pre>
+</div>
+
+<div class="grid3">
+  <div>
+    <h3>Date Range</h3>
+    <div class="result-block" id="result-daterange">
+      <pre class="dim">—</pre>
+    </div>
+  </div>
+  <div>
+    <h3>Windowed Counts</h3>
+    <div class="result-block" id="result-counts">
+      <pre class="dim">—</pre>
+    </div>
+  </div>
+  <div>
+    <h3>Consistency Check</h3>
+    <div class="result-block" id="result-check">
+      <pre class="dim">—</pre>
+    </div>
+  </div>
+</div>
+
+<!-- Load sax-js as a plain script before the ES module -->
+<script src="../lib/saxjs/sax.min.js"></script>
+<script type="module">
+import { parseAppleHealth, getExportDateRange } from '../js/apple_health.js';
+
+const zone     = document.getElementById('zone-main');
+const fileInput= document.getElementById('file-main');
+const progress = document.getElementById('progress');
+const elBio    = document.getElementById('result-biometrics');
+const elRange  = document.getElementById('result-daterange');
+const elCounts = document.getElementById('result-counts');
+const elCheck  = document.getElementById('result-check');
+
+function selectedWindow() {
+  return document.querySelector('input[name=win]:checked').value;
+}
+
+function fmt(v) {
+  if (v === null || v === undefined) return '<span class="null">null</span>';
+  return String(v);
+}
+
+function field(label, value) {
+  const cls = (value === null || value === undefined) ? 'null' : '';
+  return `<div class="field"><span class="label">${label}</span><span class="value ${cls}">${fmt(value)}</span></div>`;
+}
+
+function tsToStr(ts) {
+  if (ts === null) return 'null';
+  const d = new Date(ts);
+  return d.toISOString().replace('T', ' ').slice(0, 19);
+}
+
+function runChecks(bio) {
+  const checks = [];
+
+  function check(label, ok, detail = '') {
+    checks.push({ label, ok, detail });
+  }
+
+  check('age is integer >= 0',     Number.isInteger(bio.age) && bio.age >= 0,        `got ${bio.age}`);
+  check('sex is male or female',   bio.sex === 'male' || bio.sex === 'female',        `got "${bio.sex}"`);
+  check('weight_lb > 0',           bio.weight_lb !== null && bio.weight_lb > 0,       `got ${bio.weight_lb}`);
+  check('weight_kg > 0',           bio.weight_kg !== null && bio.weight_kg > 0,       `got ${bio.weight_kg}`);
+  check('height_in > 0',           bio.height_in !== null && bio.height_in > 0,       `got ${bio.height_in}`);
+  check('bmi in [15, 60]',         bio.bmi !== null && bio.bmi >= 15 && bio.bmi <= 60, `got ${bio.bmi}`);
+
+  // weight_kg / weight_lb ratio ≈ 0.453592
+  if (bio.weight_kg !== null && bio.weight_lb !== null && bio.weight_lb > 0) {
+    const ratio = bio.weight_kg / bio.weight_lb;
+    check('kg/lb ratio ≈ 0.4536',  Math.abs(ratio - 0.453592) < 0.001,               `ratio=${ratio.toFixed(5)}`);
+  }
+
+  // BMI = (weight_lb / height_in^2) * 703
+  if (bio.weight_lb !== null && bio.height_in !== null && bio.height_in > 0) {
+    const expectedBmi = (bio.weight_lb / (bio.height_in ** 2)) * 703;
+    check('BMI formula correct',   Math.abs(bio.bmi - expectedBmi) < 0.2,             `expected≈${expectedBmi.toFixed(1)} got=${bio.bmi}`);
+  }
+
+  check('systolic_bp > 0 or null', bio.systolic_bp === null || bio.systolic_bp > 0,  `got ${bio.systolic_bp}`);
+  check('resting_hr > 0 or null',  bio.resting_hr  === null || bio.resting_hr  > 0,  `got ${bio.resting_hr}`);
+  check('vo2_max > 0 or null',     bio.vo2_max     === null || bio.vo2_max     > 0,  `got ${bio.vo2_max}`);
+  check('hrv > 0 or null',         bio.hrv         === null || bio.hrv         > 0,  `got ${bio.hrv}`);
+
+  // date range: min <= max
+  const [minDt, maxDt] = bio._date_range;
+  check('date range: min <= max',  minDt !== null && maxDt !== null && minDt <= maxDt,
+        `${tsToStr(minDt)} .. ${tsToStr(maxDt)}`);
+
+  return checks;
+}
+
+async function handleFile(file) {
+  const win = selectedWindow();
+  zone.className = 'zone';
+  zone.textContent = `Parsing ${file.name} (${(file.size / 1e6).toFixed(0)} MB) — ${win}…`;
+  elBio.innerHTML = '<pre class="info">Streaming XML…</pre>';
+  elRange.innerHTML  = '<pre class="dim">—</pre>';
+  elCounts.innerHTML = '<pre class="dim">—</pre>';
+  elCheck.innerHTML  = '<pre class="dim">—</pre>';
+
+  progress.style.display = 'block';
+  progress.value = 0;
+
+  const t0 = performance.now();
+
+  try {
+    const bio = await parseAppleHealth(file, win, null, frac => {
+      progress.value = frac;
+    });
+    progress.value = 1;
+    const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
+
+    zone.className = 'zone done';
+    zone.textContent = `✓ ${file.name} parsed in ${elapsed}s (${win})`;
+
+    // Biometrics display
+    elBio.innerHTML = `
+      ${field('age',          bio.age)}
+      ${field('sex',          bio.sex)}
+      ${field('weight_lb',    bio.weight_lb)}
+      ${field('weight_kg',    bio.weight_kg)}
+      ${field('height_in',    bio.height_in)}
+      ${field('bmi',          bio.bmi)}
+      ${field('systolic_bp',  bio.systolic_bp)}
+      ${field('resting_hr',   bio.resting_hr)}
+      ${field('hrv',          bio.hrv)}
+      ${field('vo2_max',      bio.vo2_max)}
+      ${field('blood_glucose',bio.blood_glucose)}
+    `;
+
+    // Date range
+    const [minDt, maxDt] = bio._date_range;
+    elRange.innerHTML = `<pre>${tsToStr(minDt)}\n  to\n${tsToStr(maxDt)}</pre>`;
+
+    // Counts
+    const cnt = bio._counts;
+    const cntKeys = Object.keys(cnt);
+    if (cntKeys.length === 0) {
+      elCounts.innerHTML = '<pre class="dim">(last_value mode — no counts)</pre>';
+    } else {
+      elCounts.innerHTML = '<pre>' +
+        cntKeys.map(k => `${k.padEnd(16)} ${cnt[k]} readings`).join('\n') +
+      '</pre>';
+    }
+
+    // Consistency checks
+    const checks = runChecks(bio);
+    const passed = checks.filter(c => c.ok).length;
+    const failed = checks.filter(c => !c.ok).length;
+    let html = `<pre>`;
+    for (const c of checks) {
+      const cls  = c.ok ? 'pass' : 'fail';
+      const mark = c.ok ? 'PASS' : 'FAIL';
+      html += `<span class="${cls}">${mark}</span>  ${c.label}`;
+      if (c.detail) html += `  <span class="dim">(${c.detail})</span>`;
+      html += '\n';
+    }
+    html += `\n<span class="${failed === 0 ? 'pass' : 'fail'}">${passed}/${checks.length} checks passed</span>`;
+    html += `</pre>`;
+    elCheck.innerHTML = html;
+
+  } catch (err) {
+    zone.className = 'zone error';
+    zone.textContent = `Error: ${err.message}`;
+    elBio.innerHTML = `<pre class="fail">${err.stack || err.message}</pre>`;
+    console.error(err);
+  }
+}
+
+// ── Drop zone wiring ─────────────────────────────────────────────────────────
+zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('over'); });
+zone.addEventListener('dragleave', () => zone.classList.remove('over'));
+zone.addEventListener('drop', e => {
+  e.preventDefault(); zone.classList.remove('over');
+  const file = e.dataTransfer.files[0];
+  if (file) handleFile(file);
+});
+fileInput.addEventListener('change', () => {
+  if (fileInput.files[0]) handleFile(fileInput.files[0]);
+});
+</script>
+</body>
+</html>
