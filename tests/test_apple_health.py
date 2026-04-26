@@ -168,7 +168,7 @@ class TestMissingData:
     def test_returns_all_expected_keys(self, bio):
         expected_keys = {"age", "sex", "weight_lb", "weight_kg", "height_in",
                          "bmi", "systolic_bp", "resting_hr", "hrv",
-                         "vo2_max", "blood_glucose", "_counts"}
+                         "vo2_max", "blood_glucose", "_counts", "_date_range"}
         assert expected_keys == set(bio.keys())
 
 

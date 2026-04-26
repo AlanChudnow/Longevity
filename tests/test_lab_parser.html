@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>lab_parser.js tests</title>
+  <style>
+    * { box-sizing: border-box; }
+    body  { font-family: monospace; background: #0f1720; color: #ccc; padding: 20px; }
+    h2    { color: #4A6FA5; margin-bottom: 4px; }
+    h3    { color: #9aa6b2; margin: 16px 0 6px; }
+    .zone {
+      border: 2px dashed #3a4654; border-radius: 8px; padding: 24px;
+      text-align: center; cursor: pointer; margin-bottom: 12px;
+      transition: border-color 0.2s;
+    }
+    .zone.over  { border-color: #4A6FA5; background: #1a2535; }
+    .zone.done  { border-color: #3D9970; }
+    .zone.error { border-color: #e74c3c; }
+    .pass  { color: #3D9970; }
+    .fail  { color: #e74c3c; }
+    .warn  { color: #E67E22; }
+    .info  { color: #9aa6b2; }
+    .dim   { color: #4a5568; }
+    pre    { white-space: pre-wrap; font-size: 12px; line-height: 1.5; }
+    .result-block { background: #1a2535; border-radius: 6px; padding: 12px; margin-bottom: 12px; }
+    #summary { margin-top: 16px; font-size: 16px; font-weight: bold; }
+    details summary { cursor: pointer; color: #9aa6b2; margin-top: 8px; }
+    details pre { font-size: 11px; max-height: 300px; overflow-y: auto; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 700px) { .grid { grid-template-columns: 1fr; } }
+    input[type=file] { display: none; }
+  </style>
+</head>
+<body>
+<h2>lab_parser.js — Phase 3 Tests</h2>
+<p class="info">Drop each PDF onto its zone (or click to browse). Results validate against the spec's non-negotiable expected values.</p>
+
+<div class="grid">
+  <!-- Labcorp -->
+  <div>
+    <h3>Labcorp (04/23/2026)</h3>
+    <div class="zone" id="zone-labcorp" onclick="document.getElementById('file-labcorp').click()">
+      Drop Labcorp PDF here<br>
+      <span class="dim">Alan Chudnow 2026-04-23 Comprehensive Blood.pdf</span>
+    </div>
+    <input type="file" id="file-labcorp" accept=".pdf">
+    <div class="result-block" id="result-labcorp">
+      <pre class="dim">Awaiting file…</pre>
+    </div>
+  </div>
+
+  <!-- Sonora Quest -->
+  <div>
+    <h3>Sonora Quest (01/19/2026)</h3>
+    <div class="zone" id="zone-sonora" onclick="document.getElementById('file-sonora').click()">
+      Drop Sonora Quest PDF here<br>
+      <span class="dim">Alan Chudnow 2026-01-19 Blood Test Lipid report.pdf</span>
+    </div>
+    <input type="file" id="file-sonora" accept=".pdf">
+    <div class="result-block" id="result-sonora">
+      <pre class="dim">Awaiting file…</pre>
+    </div>
+  </div>
+</div>
+
+<div id="summary"></div>
+
+<script type="module">
+import { parseLabPdf, extractRawText } from '../js/lab_parser.js';
+
+// ── Expected values from the spec (non-negotiable) ───────────────────────────
+const EXPECTED = {
+  labcorp: {
+    hdl: 46, ldl: 72, apob: 66, hba1c: 5.1, glucose: 82,
+    crp: 1.0, total_cholesterol: 130, triglycerides: 83, vldl: 12,
+    lab_date: '04/23/2026', lab_vendor: 'labcorp',
+  },
+  sonora_quest: {
+    hdl: 35, ldl: 122, non_hdl: 143, hba1c: 5.2, glucose: 96,
+    total_cholesterol: 178, triglycerides: 106, vldl: 21,
+    apob: null, crp: null,
+    lab_date: '01/19/2026', lab_vendor: 'sonora_quest',
+  },
+};
+
+// Track pass/fail across both PDFs
+const totals = { passed: 0, failed: 0 };
+
+function checkResults(got, expected, label, elResult, elZone) {
+  let html = `<pre>`;
+  let allPass = true;
+
+  for (const [k, expVal] of Object.entries(expected)) {
+    const gotVal = got[k] ?? null;
+    let ok;
+    if (expVal === null) {
+      ok = gotVal === null || gotVal === undefined;
+    } else if (typeof expVal === 'number') {
+      ok = Math.abs((gotVal ?? NaN) - expVal) < 0.05;
+    } else {
+      ok = gotVal === expVal;
+    }
+    const cls   = ok ? 'pass' : 'fail';
+    const mark  = ok ? 'PASS' : 'FAIL';
+    const gotStr = gotVal === null ? 'null' : String(gotVal);
+    const expStr = expVal === null ? 'null' : String(expVal);
+    html += `<span class="${cls}">${mark}</span>  ${k.padEnd(20)} got=${gotStr.padEnd(10)} exp=${expStr}\n`;
+    if (ok) totals.passed++; else { totals.failed++; allPass = false; }
+  }
+
+  // Also show any extra fields returned (non-null values not in expected)
+  const extra = Object.entries(got).filter(([k, v]) => !(k in expected) && v !== null);
+  if (extra.length) {
+    html += `\n<span class="info">-- Extra fields returned --</span>\n`;
+    for (const [k, v] of extra) html += `<span class="info">         ${k.padEnd(20)} ${v}</span>\n`;
+  }
+
+  html += `</pre>`;
+  elResult.innerHTML = html;
+  elZone.className = 'zone ' + (allPass ? 'done' : 'error');
+  elZone.textContent = allPass ? `✓ ${label} — all pass` : `✗ ${label} — see failures`;
+
+  updateSummary();
+}
+
+function updateSummary() {
+  const el = document.getElementById('summary');
+  const total = totals.passed + totals.failed;
+  if (total === 0) { el.textContent = ''; return; }
+  el.textContent = `${totals.passed} / ${total} checks passed`;
+  el.style.color = totals.failed === 0 ? '#3D9970' : '#e74c3c';
+}
+
+async function handleFile(file, vendorKey, elResult, elZone) {
+  elZone.className = 'zone';
+  elZone.textContent = `Parsing ${file.name}…`;
+  elResult.innerHTML = '<pre class="info">Extracting text and matching labels…</pre>';
+  try {
+    const got = await parseLabPdf(file);
+
+    // Attach raw text for debugging
+    const raw = await extractRawText(file);
+    const relevant = raw.split('\n')
+      .filter(l => /cholesterol|hdl|ldl|triglyceride|apob|apolipoprotein|glucose|hba1c|hemoglobin|crp|reactive|vldl|non.hdl|collected|labcorp|sonora/i.test(l))
+      .join('\n');
+
+    checkResults(got, EXPECTED[vendorKey], file.name, elResult, elZone);
+
+    const details = document.createElement('details');
+    details.innerHTML = `<summary>Raw extracted text (relevant lines)</summary><pre>${escHtml(relevant)}</pre>`;
+    document.getElementById('result-' + vendorKey.replace('_', '-').replace('sonora-quest','sonora')).appendChild(details);
+
+  } catch (err) {
+    elZone.className = 'zone error';
+    elZone.textContent = `Error: ${err.message}`;
+    elResult.innerHTML = `<pre class="fail">${escHtml(err.stack || err.message)}</pre>`;
+    console.error(err);
+  }
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── Drop zone + file input wiring ────────────────────────────────────────────
+function wireZone(zoneId, fileInputId, vendorKey) {
+  const zone   = document.getElementById(zoneId);
+  const input  = document.getElementById(fileInputId);
+  const result = document.getElementById('result-' + zoneId.replace('zone-',''));
+
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('over'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('over'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault(); zone.classList.remove('over');
+    const file = e.dataTransfer.files[0];
+    if (file) handleFile(file, vendorKey, result, zone);
+  });
+  input.addEventListener('change', () => {
+    if (input.files[0]) handleFile(input.files[0], vendorKey, result, zone);
+  });
+}
+
+wireZone('zone-labcorp', 'file-labcorp', 'labcorp');
+wireZone('zone-sonora',  'file-sonora',  'sonora_quest');
+</script>
+</body>
+</html>

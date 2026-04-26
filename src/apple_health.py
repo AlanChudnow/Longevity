@@ -108,16 +108,20 @@ def _age_from_dob(dob_str: str) -> Optional[int]:
 def get_latest_biometrics(
     export_path: str,
     window: str = "last_value",
+    as_of: Optional[datetime] = None,
 ) -> Dict:
     """
     Parse Apple Health export.xml and return biometric values.
 
     window: "last_value" | "last_week" | "last_month"
+    as_of:  if provided, records after this datetime are ignored and window
+            calculations are relative to this datetime rather than now.
 
     Returns dict with keys:
         age, sex, weight_lb, weight_kg, height_in, bmi,
         systolic_bp, resting_hr, hrv, vo2_max, blood_glucose,
-        _counts  (maps field name → N readings averaged; empty for last_value)
+        _counts      (maps field name → N readings averaged; empty for last_value)
+        _date_range  ((min_dt, max_dt) of all Record endDates; both may be None)
 
     All metric values are None when not present in the export.
     Raises FileNotFoundError if the file does not exist.
@@ -126,8 +130,8 @@ def get_latest_biometrics(
     if not path.exists():
         raise FileNotFoundError(f"Apple Health export not found: {path}")
 
-    # Cutoff for windowed modes (naive datetime)
-    _now = datetime.now()
+    # Cutoff for windowed modes (naive datetime); as_of shifts the reference point
+    _now = as_of if as_of is not None else datetime.now()
     if window == "last_week":
         _cutoff: Optional[datetime] = _now - timedelta(days=7)
     elif window == "last_month":
@@ -142,6 +146,8 @@ def get_latest_biometrics(
 
     dob_str: Optional[str] = None
     sex_raw: Optional[str] = None
+    _min_dt: Optional[datetime] = None
+    _max_dt: Optional[datetime] = None
 
     for _event, elem in ET.iterparse(str(path), events=("start",)):
         tag = elem.tag
@@ -151,12 +157,25 @@ def get_latest_biometrics(
             sex_raw = elem.get("HKCharacteristicTypeIdentifierBiologicalSex", "")
 
         elif tag == "Record":
+            end_str = elem.get("endDate", "")
+            dt = _parse_dt(end_str)
+
+            # Track full date range of export (before any as_of filtering)
+            if dt is not None:
+                if _min_dt is None or dt < _min_dt:
+                    _min_dt = dt
+                if _max_dt is None or dt > _max_dt:
+                    _max_dt = dt
+
             rec_type = elem.get("type", "")
             if rec_type in _WANT:
-                end_str = elem.get("endDate", "")
+                # Skip records that fall after the as_of cutoff
+                if as_of is not None and dt is not None and dt > as_of:
+                    elem.clear()
+                    continue
+
                 val_str = elem.get("value", "")
                 unit    = elem.get("unit", "")
-                dt = _parse_dt(end_str)
                 try:
                     value = float(val_str)
                 except (ValueError, TypeError):
@@ -281,4 +300,34 @@ def get_latest_biometrics(
         "vo2_max":       _r(vo2_max, 1),
         "blood_glucose": _r(blood_glucose, 1),
         "_counts":       counts,
+        "_date_range":   (_min_dt, _max_dt),
     }
+
+
+# ---------------------------------------------------------------------------
+# Date range scan (standalone — use when biometrics are not needed)
+# ---------------------------------------------------------------------------
+
+def get_export_date_range(export_path: str) -> Tuple[Optional[datetime], Optional[datetime]]:
+    """
+    Return (min_dt, max_dt) for all Record endDate values in the export.
+    Raises FileNotFoundError if the file does not exist.
+    """
+    path = Path(export_path)
+    if not path.exists():
+        raise FileNotFoundError(f"Apple Health export not found: {path}")
+
+    min_dt: Optional[datetime] = None
+    max_dt: Optional[datetime] = None
+
+    for _event, elem in ET.iterparse(str(path), events=("start",)):
+        if elem.tag == "Record":
+            dt = _parse_dt(elem.get("endDate", ""))
+            if dt is not None:
+                if min_dt is None or dt < min_dt:
+                    min_dt = dt
+                if max_dt is None or dt > max_dt:
+                    max_dt = dt
+        elem.clear()
+
+    return (min_dt, max_dt)
