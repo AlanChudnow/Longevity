@@ -73,10 +73,10 @@ Run `python scripts/convert_data_to_json.py` to regenerate these from source (re
 | 2 | `health_models.js` — survival math | Complete |
 | 3 | `lab_parser.js` — PDF extraction | Complete |
 | 4 | `apple_health.js` — XML streaming | Complete |
-| 5 | `index.html` and `css/app.css` — layout | Pending |
-| 6 | `app.js` — full wiring | Pending |
-| 7 | `chart.js` — survival curve | Pending |
-| 8 | GitHub Pages deploy | Pending |
+| 5 | `index.html` and `css/app.css` — layout | Complete |
+| 6 | `app.js` — full wiring | Complete |
+| 7 | `chart.js` — survival curve | Complete |
+| 8 | GitHub Pages deploy | Complete |
 
 ### Regression tests
 

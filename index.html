@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Longevity Risk Calculator</title>
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<div id="app">
+
+  <!-- ── Top bar ──────────────────────────────────────────────────────────── -->
+  <header class="app-header">
+    <span class="app-title">Longevity Risk Calculator</span>
+    <nav class="tab-nav">
+      <button class="tab-btn active" id="btn-entry"   onclick="switchTab('entry')">Entry</button>
+      <button class="tab-btn"        id="btn-results" onclick="switchTab('results')">Results</button>
+    </nav>
+  </header>
+
+  <!-- ════════════════════════════════════════════════════════════════════════
+       ENTRY TAB
+  ═══════════════════════════════════════════════════════════════════════════ -->
+  <div class="tab-panel active" id="tab-entry">
+
+    <!-- ── Three input panels ─────────────────────────────────────────────── -->
+    <div class="panels-grid">
+
+      <!-- ══ Panel 1: Apple Health ══════════════════════════════════════════ -->
+      <div class="panel" id="panel-ah">
+
+        <!-- Header: title + window selector + status -->
+        <div class="panel-header">
+          <span class="panel-title">Apple Health</span>
+          <select id="ah-window" title="Data window">
+            <option value="last_value">Last value</option>
+            <option value="last_week">Last week</option>
+            <option value="last_month">Last month</option>
+            <option value="none">Manual entry</option>
+          </select>
+          <span class="panel-status" id="ah-status">No file loaded</span>
+        </div>
+
+        <!-- Drop zone for export.xml -->
+        <div class="ah-drop-area">
+          <div class="drop-zone" id="drop-ah"
+               onclick="document.getElementById('file-ah').click()">
+            <strong>Drop export.xml here</strong>
+            <div class="drop-zone-hint">or click to browse · streams without loading into memory</div>
+          </div>
+          <input type="file" id="file-ah" accept=".xml" hidden>
+          <button class="ah-reload-btn" id="ah-reload-btn">Browse for export.xml…</button>
+        </div>
+
+        <!-- Current / Historical date mode -->
+        <div class="date-mode-row" id="date-mode-row">
+          <label>
+            <input type="radio" name="ah-mode" value="current" id="ah-mode-current" checked>
+            Current
+          </label>
+          <label>
+            <input type="radio" name="ah-mode" value="historical" id="ah-mode-historical">
+            Historical
+          </label>
+          <span class="hist-selectors" id="hist-selectors">
+            <select id="ah-month">
+              <option>Jan</option><option>Feb</option><option>Mar</option>
+              <option>Apr</option><option>May</option><option>Jun</option>
+              <option>Jul</option><option>Aug</option><option>Sep</option>
+              <option>Oct</option><option>Nov</option><option>Dec</option>
+            </select>
+            <select id="ah-year">
+              <!-- Populated by app.js from export date range -->
+            </select>
+          </span>
+        </div>
+
+        <!-- Field rows: dot · label · value (or editable input in manual mode) -->
+        <div class="ah-fields">
+
+          <div class="ah-field" data-key="age">
+            <span class="dot" id="dot-age">●</span>
+            <span class="ah-field-label">Age</span>
+            <span class="ah-field-value" id="val-age">—</span>
+            <input type="text" class="field-input" id="inp-age" placeholder="yrs">
+            <span class="ah-field-unit" id="unit-age" style="font-size:11px;color:var(--ink-3);width:36px;text-align:left;padding-left:4px">yrs</span>
+          </div>
+
+          <div class="ah-field" data-key="sex">
+            <span class="dot" id="dot-sex">●</span>
+            <span class="ah-field-label">Sex</span>
+            <span class="ah-field-value" id="val-sex">—</span>
+            <input type="text" class="field-input" id="inp-sex" placeholder="male / female">
+          </div>
+
+          <div class="ah-field" data-key="weight_lb">
+            <span class="dot" id="dot-weight_lb">●</span>
+            <span class="ah-field-label">Weight</span>
+            <span class="ah-field-value" id="val-weight_lb">—</span>
+            <input type="text" class="field-input" id="inp-weight_lb" placeholder="lb">
+            <span class="ah-field-unit" style="font-size:11px;color:var(--ink-3);width:20px">lb</span>
+          </div>
+
+          <div class="ah-field" data-key="height_in">
+            <span class="dot" id="dot-height_in">●</span>
+            <span class="ah-field-label">Height</span>
+            <span class="ah-field-value" id="val-height_in">—</span>
+            <input type="text" class="field-input" id="inp-height_in" placeholder="in">
+            <span class="ah-field-unit" style="font-size:11px;color:var(--ink-3);width:20px">in</span>
+          </div>
+
+          <div class="ah-field" data-key="bmi">
+            <span class="dot" id="dot-bmi">●</span>
+            <span class="ah-field-label">BMI</span>
+            <span class="ah-field-value" id="val-bmi">—</span>
+            <!-- BMI is always computed; input is read-only placeholder -->
+            <input type="text" class="field-input" id="inp-bmi" placeholder="auto" readonly
+                   style="background:var(--surface-2);cursor:default">
+          </div>
+
+          <div class="ah-field" data-key="systolic_bp">
+            <span class="dot" id="dot-systolic_bp">●</span>
+            <span class="ah-field-label">Systolic BP</span>
+            <span class="ah-field-value" id="val-systolic_bp">—</span>
+            <input type="text" class="field-input" id="inp-systolic_bp" placeholder="mmHg">
+            <span class="ah-field-unit" style="font-size:11px;color:var(--ink-3);width:36px">mmHg</span>
+          </div>
+
+          <div class="ah-field" data-key="resting_hr">
+            <span class="dot" id="dot-resting_hr">●</span>
+            <span class="ah-field-label">Resting HR</span>
+            <span class="ah-field-value" id="val-resting_hr">—</span>
+            <input type="text" class="field-input" id="inp-resting_hr" placeholder="bpm">
+            <span class="ah-field-unit" style="font-size:11px;color:var(--ink-3);width:28px">bpm</span>
+          </div>
+
+          <div class="ah-field" data-key="hrv">
+            <span class="dot" id="dot-hrv">●</span>
+            <span class="ah-field-label">HRV</span>
+            <span class="ah-field-value" id="val-hrv">—</span>
+            <input type="text" class="field-input" id="inp-hrv" placeholder="ms">
+            <span class="ah-field-unit" style="font-size:11px;color:var(--ink-3);width:20px">ms</span>
+          </div>
+
+          <div class="ah-field" data-key="vo2_max">
+            <span class="dot" id="dot-vo2_max">●</span>
+            <span class="ah-field-label">VO2 Max</span>
+            <span class="ah-field-value" id="val-vo2_max">—</span>
+            <input type="text" class="field-input" id="inp-vo2_max" placeholder="mL/min·kg">
+            <span class="ah-field-unit" style="font-size:11px;color:var(--ink-3);width:56px">mL/min·kg</span>
+          </div>
+
+          <div class="ah-field" data-key="blood_glucose">
+            <span class="dot" id="dot-blood_glucose">●</span>
+            <span class="ah-field-label">Blood Glucose</span>
+            <span class="ah-field-value" id="val-blood_glucose">—</span>
+            <input type="text" class="field-input" id="inp-blood_glucose" placeholder="mg/dL">
+            <span class="ah-field-unit" style="font-size:11px;color:var(--ink-3);width:36px">mg/dL</span>
+          </div>
+
+        </div><!-- /.ah-fields -->
+
+        <div class="ah-timestamp" id="ah-timestamp"></div>
+
+      </div><!-- /#panel-ah -->
+
+
+      <!-- ══ Panel 2: Lab Results ════════════════════════════════════════════ -->
+      <div class="panel" id="panel-lab">
+
+        <div class="panel-header">
+          <span class="panel-title">Lab Results</span>
+        </div>
+
+        <!-- Drop zone for lab PDF -->
+        <div class="lab-drop-area">
+          <div class="drop-zone" id="drop-lab"
+               onclick="document.getElementById('file-lab').click()">
+            <strong>Drop blood panel PDF here</strong>
+            <div class="drop-zone-hint">Labcorp or Sonora Quest · values populate automatically</div>
+          </div>
+          <input type="file" id="file-lab" accept=".pdf" hidden>
+        </div>
+
+        <button class="lab-browse-btn" id="lab-browse-btn"
+                onclick="document.getElementById('file-lab').click()">
+          Browse for PDF…
+        </button>
+
+        <div class="lab-status status-dim" id="lab-status"></div>
+
+        <!-- Lab value entry fields -->
+        <div class="lab-fields">
+
+          <div class="lab-field">
+            <span class="lab-field-label">Total Cholesterol</span>
+            <input type="text" class="field-input" id="lab-total_cholesterol" placeholder="">
+            <span class="lab-field-unit">mg/dL</span>
+          </div>
+
+          <div class="lab-field">
+            <span class="lab-field-label">HDL</span>
+            <input type="text" class="field-input" id="lab-hdl" placeholder="">
+            <span class="lab-field-unit">mg/dL</span>
+          </div>
+
+          <div class="lab-field">
+            <span class="lab-field-label">LDL</span>
+            <input type="text" class="field-input" id="lab-ldl" placeholder="">
+            <span class="lab-field-unit">mg/dL</span>
+          </div>
+
+          <div class="lab-field">
+            <span class="lab-field-label">Triglycerides</span>
+            <input type="text" class="field-input" id="lab-triglycerides" placeholder="">
+            <span class="lab-field-unit">mg/dL</span>
+          </div>
+
+          <div class="lab-field">
+            <span class="lab-field-label">ApoB</span>
+            <input type="text" class="field-input" id="lab-apob" placeholder="">
+            <span class="lab-field-unit">mg/dL</span>
+          </div>
+
+          <div class="lab-field">
+            <span class="lab-field-label">CRP</span>
+            <input type="text" class="field-input" id="lab-crp" placeholder="or &lt;1">
+            <span class="lab-field-unit">mg/L</span>
+          </div>
+
+        </div><!-- /.lab-fields -->
+
+        <div class="crp-hint">
+          &lt;1.0 low risk · 1–3 moderate · &gt;3 elevated · &gt;10 possible infection
+        </div>
+        <div class="crp-infection-warn" id="crp-infection-warn">
+          ⚠ May indicate acute infection — retest when healthy
+        </div>
+
+      </div><!-- /#panel-lab -->
+
+
+      <!-- ══ Panel 3: Manual Entry & Fitness ════════════════════════════════ -->
+      <div class="panel" id="panel-manual">
+
+        <div class="panel-header">
+          <span class="panel-title">Manual Entry &amp; Fitness</span>
+        </div>
+
+        <!-- ZIP Code -->
+        <div class="manual-section">
+          <div class="manual-field">
+            <span class="manual-field-label">ZIP Code</span>
+            <input type="text" class="field-input-sm" id="inp-zip"
+                   placeholder="12345" maxlength="5">
+          </div>
+          <div class="zip-status status-dim" id="zip-status"></div>
+        </div>
+
+        <!-- Smoking + Diabetes -->
+        <div class="manual-section">
+
+          <div class="manual-field">
+            <span class="manual-field-label">Smoking status</span>
+            <select id="inp-smoker" style="width:110px;height:30px">
+              <option value="never">never</option>
+              <option value="former">former</option>
+              <option value="current">current</option>
+            </select>
+          </div>
+
+          <div class="manual-field">
+            <span class="manual-field-label">Diabetes</span>
+            <input type="checkbox" id="inp-diabetes">
+          </div>
+
+        </div>
+
+        <!-- Fitness -->
+        <div class="manual-section">
+
+          <div class="fitness-field-block">
+            <div class="fitness-field-row">
+              <span class="manual-field-label">Grip Strength</span>
+              <input type="text" class="field-input-sm" id="inp-grip_kg" placeholder="">
+              <span class="manual-field-unit">kg</span>
+            </div>
+            <div class="fitness-hint">Dynamometer reading</div>
+          </div>
+
+          <div class="fitness-field-block">
+            <div class="fitness-field-row">
+              <span class="manual-field-label">Dead Hang Time</span>
+              <input type="text" class="field-input-sm" id="inp-hang_seconds" placeholder="">
+              <span class="manual-field-unit">sec</span>
+            </div>
+            <div class="fitness-hint">Hang to failure</div>
+          </div>
+
+          <div class="fitness-note">
+            Improving these scores extends your curve.
+          </div>
+
+        </div>
+
+      </div><!-- /#panel-manual -->
+
+    </div><!-- /.panels-grid -->
+
+    <!-- ── Calculate button ─────────────────────────────────────────────────── -->
+    <div class="calc-row">
+      <button class="btn-calculate" id="btn-calculate">CALCULATE</button>
+      <div class="missing-warn" id="missing-warn"></div>
+    </div>
+
+  </div><!-- /#tab-entry -->
+
+
+  <!-- ════════════════════════════════════════════════════════════════════════
+       RESULTS TAB
+  ═══════════════════════════════════════════════════════════════════════════ -->
+  <div class="tab-panel" id="tab-results">
+
+    <div class="results-grid" id="results-grid">
+
+      <!-- ── Left column ───────────────────────────────────────────────────── -->
+      <div class="results-left">
+
+        <!-- Stat cards (2×2 grid) -->
+        <div class="stat-cards" id="stat-cards">
+          <div class="stat-card">
+            <div class="stat-card-label">5-yr Risk</div>
+            <div class="stat-card-value" id="stat-r5">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-card-label">10-yr Risk</div>
+            <div class="stat-card-value" id="stat-r10">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-card-label">Median Remaining</div>
+            <div class="stat-card-value" id="stat-med">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-card-label">ASCVD 10-yr</div>
+            <div class="stat-card-value" id="stat-ascvd">—</div>
+          </div>
+        </div>
+
+        <!-- Data source label -->
+        <div class="data-source-label" id="data-source-label"></div>
+
+        <!-- Risk factors panel (hidden until first Calculate) -->
+        <div class="risk-panel" id="risk-panel">
+          <div class="risk-body">
+            <div class="risk-col" id="risk-positive">
+              <div class="risk-empty">Enter optional fields for full analysis</div>
+            </div>
+            <div class="risk-divider"></div>
+            <div class="risk-col" id="risk-negative">
+              <div class="risk-empty">No significant risk factors identified</div>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /.results-left -->
+
+      <!-- ── Right column: chart ───────────────────────────────────────────── -->
+      <div class="results-right" id="results-right">
+        <span class="chart-placeholder" id="chart-placeholder">
+          Click CALCULATE to generate your survival curve.
+        </span>
+        <canvas id="survival-chart" style="display:none"></canvas>
+      </div>
+
+    </div><!-- /.results-grid -->
+
+  </div><!-- /#tab-results -->
+
+</div><!-- /#app -->
+
+<!-- ── Libraries (plain scripts, loaded before ES modules) ──────────────────── -->
+<script src="lib/saxjs/sax.min.js"></script>
+<script src="lib/chartjs/chart.umd.min.js"></script>
+
+<!-- ── Tab switching (minimal UI-only JS — no business logic) ──────────────── -->
+<script>
+function switchTab(name) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  document.getElementById('btn-' + name).classList.add('active');
+}
+</script>
+
+<!-- ── Application modules ──────────────────────────────────────────────────── -->
+<script type="module" src="js/app.js"></script>
+
+</body>
+</html>

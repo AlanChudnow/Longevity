@@ -1,0 +1,713 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   Design tokens (matching src/gui.py color constants)
+───────────────────────────────────────────────────────────────────────────── */
+:root {
+  --bg:          #ffffff;
+  --surface-2:   #fafbfc;
+  --surface-3:   #f4f6f8;
+  --ink-1:       #0f1720;
+  --ink-2:       #3a4654;
+  --ink-3:       #6b7a8a;
+  --ink-4:       #9aa6b2;
+  --line:        #e7ebef;
+  --border:      #9aa6b2;
+  --accent:      #4a6fa5;
+  --accent-hvr:  #3a5a8a;
+  --accent-soft: #eef2f8;
+  --ok:          #3d9970;
+  --warn:        #e67e22;
+  --danger:      #e74c3c;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Reset and base
+───────────────────────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+html, body {
+  margin: 0; padding: 0;
+  background: var(--bg);
+  color: var(--ink-1);
+  font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   App shell
+───────────────────────────────────────────────────────────────────────────── */
+#app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Top bar / header
+───────────────────────────────────────────────────────────────────────────── */
+.app-header {
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+  padding: 0 20px;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  height: 48px;
+  flex-shrink: 0;
+}
+
+.app-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink-1);
+  letter-spacing: -0.01em;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Tab navigation
+───────────────────────────────────────────────────────────────────────────── */
+.tab-nav {
+  display: flex;
+  gap: 0;
+  height: 100%;
+  align-items: stretch;
+}
+
+.tab-btn {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 0 18px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-3);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+
+.tab-btn:hover { color: var(--ink-1); }
+
+.tab-btn.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Tab panels
+───────────────────────────────────────────────────────────────────────────── */
+.tab-panel { display: none; flex: 1; }
+.tab-panel.active { display: flex; flex-direction: column; }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Entry tab layout
+───────────────────────────────────────────────────────────────────────────── */
+#tab-entry {
+  padding: 16px 20px 0;
+  gap: 0;
+}
+
+.panels-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.calc-row {
+  padding: 12px 0 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Panel cards
+───────────────────────────────────────────────────────────────────────────── */
+.panel {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.panel-header {
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--line);
+  padding: 0 14px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.panel-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-1);
+  flex: 1;
+}
+
+.panel-status {
+  font-size: 11px;
+  color: var(--ink-4);
+  white-space: nowrap;
+}
+
+.panel-body {
+  padding: 0;
+  flex: 1;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Form controls
+───────────────────────────────────────────────────────────────────────────── */
+select, input[type=text], input[type=number] {
+  font-family: inherit;
+  font-size: 12px;
+  color: var(--ink-1);
+  background: var(--surface-3);
+  border: 2px solid var(--border);
+  border-radius: 6px;
+  padding: 3px 8px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+select:focus,
+input[type=text]:focus,
+input[type=number]:focus {
+  border-color: var(--accent);
+}
+
+select {
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%239aa6b2'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  padding-right: 24px;
+}
+
+input[type=checkbox] {
+  width: 18px; height: 18px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.field-input { width: 96px; height: 30px; }
+.field-input-sm { width: 90px; height: 30px; }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Drop zones
+───────────────────────────────────────────────────────────────────────────── */
+.drop-zone {
+  border: 2px dashed var(--line);
+  border-radius: 8px;
+  padding: 16px 12px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+  font-size: 12px;
+  color: var(--ink-4);
+  line-height: 1.5;
+}
+
+.drop-zone:hover,
+.drop-zone.dragover { border-color: var(--accent); background: var(--accent-soft); }
+.drop-zone.loaded   { border-color: var(--ok);     border-style: solid; }
+.drop-zone.error    { border-color: var(--danger);  border-style: solid; }
+
+.drop-zone strong { color: var(--ink-2); }
+
+.drop-zone-hint { font-size: 11px; color: var(--ink-4); margin-top: 2px; }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Apple Health panel specific
+───────────────────────────────────────────────────────────────────────────── */
+.ah-drop-area {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.ah-reload-btn {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  padding: 5px;
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 11px;
+  color: var(--ink-2);
+  cursor: pointer;
+  text-align: center;
+}
+
+.ah-reload-btn:hover { background: var(--line); }
+
+/* Date mode row */
+.date-mode-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-bottom: 1px solid var(--line);
+  flex-wrap: wrap;
+}
+
+.date-mode-row label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--ink-2);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+input[type=radio] {
+  accent-color: var(--accent);
+  width: 14px; height: 14px;
+  cursor: pointer;
+}
+
+.date-mode-row select {
+  font-size: 11px;
+  height: 26px;
+  padding: 2px 22px 2px 6px;
+}
+
+.hist-selectors { display: none; align-items: center; gap: 4px; }
+.hist-selectors.visible { display: flex; }
+
+/* AH field rows */
+.ah-fields { padding: 2px 0; }
+
+.ah-field {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 3px 12px 3px 12px;
+  min-height: 30px;
+}
+
+.ah-field:hover { background: var(--surface-2); }
+
+.dot {
+  font-size: 9px;
+  color: var(--warn);
+  width: 18px;
+  flex-shrink: 0;
+  text-align: center;
+  transition: color 0.2s;
+}
+
+.dot.ok   { color: var(--ok); }
+.dot.warn { color: var(--warn); }
+
+.ah-field-label {
+  flex: 1;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+.ah-field-value {
+  font-size: 12px;
+  color: var(--ink-4);
+  text-align: right;
+  min-width: 90px;
+}
+
+.ah-field-value.populated { color: var(--ink-1); }
+
+.ah-field input { display: none; }
+.ah-field input.visible { display: block; }
+
+.ah-timestamp {
+  padding: 4px 14px 10px;
+  font-size: 10px;
+  color: var(--ink-4);
+}
+
+/* Window selector in AH header */
+#ah-window {
+  font-size: 11px;
+  height: 26px;
+  padding: 2px 22px 2px 6px;
+  background-color: var(--bg);
+  border-color: var(--line);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Lab panel specific
+───────────────────────────────────────────────────────────────────────────── */
+.lab-drop-area {
+  padding: 10px 14px 0;
+}
+
+.lab-browse-btn {
+  display: block;
+  width: calc(100% - 28px);
+  margin: 6px 14px 0;
+  padding: 6px;
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 11px;
+  color: var(--ink-2);
+  cursor: pointer;
+  text-align: center;
+  font-family: inherit;
+  transition: background 0.15s;
+}
+
+.lab-browse-btn:hover { background: var(--line); }
+
+.lab-status {
+  padding: 4px 14px 6px;
+  font-size: 11px;
+  color: var(--ink-3);
+  min-height: 24px;
+  line-height: 1.4;
+}
+
+.lab-fields {
+  padding: 4px 0;
+}
+
+.lab-field {
+  display: flex;
+  align-items: center;
+  padding: 4px 14px;
+  min-height: 34px;
+  gap: 8px;
+}
+
+.lab-field:hover { background: var(--surface-2); }
+
+.lab-field-label {
+  flex: 1;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+.lab-field input { flex-shrink: 0; }
+
+.lab-field-unit {
+  font-size: 11px;
+  color: var(--ink-3);
+  width: 40px;
+  text-align: left;
+}
+
+.crp-hint {
+  padding: 0 14px 4px;
+  font-size: 10px;
+  color: var(--ink-4);
+  line-height: 1.4;
+}
+
+.crp-infection-warn {
+  display: none;
+  padding: 0 14px 6px;
+  font-size: 10px;
+  color: var(--danger);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Manual Entry panel specific
+───────────────────────────────────────────────────────────────────────────── */
+.manual-section {
+  padding: 10px 14px;
+}
+
+.manual-section + .manual-section {
+  border-top: 1px solid var(--line);
+}
+
+.manual-field {
+  display: flex;
+  align-items: center;
+  padding: 5px 0;
+  gap: 8px;
+  min-height: 34px;
+}
+
+.manual-field-label {
+  flex: 1;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+.manual-field-unit {
+  font-size: 11px;
+  color: var(--ink-3);
+  width: 30px;
+}
+
+.zip-status {
+  font-size: 11px;
+  color: var(--ink-4);
+  padding: 0 0 4px;
+  line-height: 1.4;
+  min-height: 18px;
+}
+
+.fitness-field-block {
+  padding: 5px 0;
+}
+
+.fitness-field-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+
+.fitness-hint {
+  font-size: 10px;
+  color: var(--ink-4);
+  padding-bottom: 2px;
+}
+
+.fitness-note {
+  font-size: 11px;
+  color: var(--ink-4);
+  padding-top: 8px;
+  line-height: 1.4;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Calculate button row
+───────────────────────────────────────────────────────────────────────────── */
+.btn-calculate {
+  width: 100%;
+  height: 48px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.btn-calculate:hover { background: var(--accent-hvr); }
+.btn-calculate:active { transform: scale(0.995); }
+
+.missing-warn {
+  display: none;
+  font-size: 11px;
+  color: var(--warn);
+  text-align: center;
+  padding: 2px 0;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Results tab layout
+───────────────────────────────────────────────────────────────────────────── */
+#tab-results {
+  padding: 16px 20px;
+  gap: 12px;
+}
+
+.results-grid {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  grid-template-rows: auto auto 1fr;
+  gap: 12px;
+  flex: 1;
+}
+
+/* Left column: stat cards, data label, risk panel */
+.results-left {
+  grid-column: 1;
+  grid-row: 1 / 4;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Right column: chart */
+.results-right {
+  grid-column: 2;
+  grid-row: 1 / 4;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 380px;
+}
+
+.chart-placeholder {
+  color: var(--ink-4);
+  font-size: 13px;
+}
+
+#survival-chart {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Stat cards
+───────────────────────────────────────────────────────────────────────────── */
+.stat-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.stat-card {
+  background: var(--surface-3);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  text-align: center;
+}
+
+.stat-card-label {
+  font-size: 10px;
+  color: var(--ink-3);
+  margin-bottom: 4px;
+}
+
+.stat-card-value {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Data source label (below stat cards)
+───────────────────────────────────────────────────────────────────────────── */
+.data-source-label {
+  font-size: 11px;
+  color: var(--ink-4);
+  line-height: 1.4;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Risk factors panel
+───────────────────────────────────────────────────────────────────────────── */
+.risk-panel {
+  display: none;
+  background: var(--surface-3);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  flex: 1;
+}
+
+.risk-panel.visible { display: flex; flex-direction: column; }
+
+.risk-body {
+  display: grid;
+  grid-template-columns: 1fr 1px 1fr;
+  flex: 1;
+  padding: 6px 0 10px;
+}
+
+.risk-divider {
+  background: var(--line);
+}
+
+.risk-col { padding: 0; }
+
+.risk-item {
+  font-size: 10px;
+  padding: 2px 14px;
+  line-height: 1.4;
+}
+
+.risk-item.positive { color: var(--ok); }
+.risk-item.negative { color: var(--danger); }
+.risk-item.missing  { color: var(--warn); }
+.risk-item.overflow { color: var(--ink-4); }
+
+.risk-empty {
+  font-size: 10px;
+  color: var(--ink-4);
+  padding: 4px 14px;
+  font-style: italic;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Results tab — placeholder state
+───────────────────────────────────────────────────────────────────────────── */
+.results-placeholder {
+  color: var(--ink-4);
+  font-size: 13px;
+  text-align: center;
+  padding: 60px 20px;
+  grid-column: 1 / -1;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Utility / shared
+───────────────────────────────────────────────────────────────────────────── */
+.hidden { display: none !important; }
+
+.status-ok   { color: var(--ok); }
+.status-warn { color: var(--warn); }
+.status-err  { color: var(--danger); }
+.status-dim  { color: var(--ink-4); }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Apple Health manual-entry mode toggle
+   Add class .ah-mode-manual to #panel-ah to switch all fields to editable inputs
+───────────────────────────────────────────────────────────────────────────── */
+
+/* Auto mode (default): hide inputs and unit spans, show value labels */
+.ah-field input        { display: none; }
+.ah-field .ah-field-unit { display: none; }
+
+/* Manual mode: show inputs and unit spans, hide value labels */
+.ah-mode-manual .ah-field input:not([readonly])  { display: block; }
+.ah-mode-manual .ah-field .ah-field-unit         { display: inline; }
+.ah-mode-manual .ah-field .ah-field-value        { display: none; }
+
+/* BMI is always readonly-computed in manual mode — keep it styled distinctly */
+.ah-mode-manual #inp-bmi {
+  display: block;
+  background: var(--surface-2);
+  cursor: default;
+  color: var(--ink-2);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Responsive — stack panels at ≤768px
+───────────────────────────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .panels-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .results-grid {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto auto auto auto;
+  }
+
+  .results-left {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .results-right {
+    grid-column: 1;
+    grid-row: 2;
+    min-height: 280px;
+  }
+}
